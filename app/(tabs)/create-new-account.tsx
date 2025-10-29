@@ -11,9 +11,60 @@ import {
 import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
+import { supabase } from "../../lib/supabase";
 
 export default function CreateNewAccount() {
   const router = useRouter();
+  const [loading, setLoading] = useState(false);
+  const [formData, setFormData] = useState({
+    fullName: "",
+    email: "",
+    phone: "",
+    password: "",
+    confirmPassword: ""
+  });
+
+  const handleSignUp = async () => {
+    // Basic validation
+    if (formData.password !== formData.confirmPassword) {
+      Alert.alert("Error", "Passwords don't match");
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      // Create user in Supabase
+      const { data, error } = await supabase.auth.signUp({
+        email: formData.email,
+        password: formData.password,
+      });
+
+      if (error) {
+        Alert.alert("Signup Failed", error.message);
+        return;
+      }
+
+      if (data.user) {
+        // Update user profile with name and phone
+        await supabase
+          .from('users')
+          .update({
+            username: formData.fullName,
+            phone: formData.phone
+          })
+          .eq('user_id', data.user.id);
+
+        Alert.alert("Success!", "Account created successfully!");
+        router.push("/login");
+      }
+
+    } catch (error) {
+      Alert.alert("Error", "Something went wrong");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -44,6 +95,7 @@ export default function CreateNewAccount() {
                   style={styles.input}
                   placeholder="John Doe"
                   placeholderTextColor="#94a3b8"
+                  onChangeText={(text) => setFormData(prev => ({...prev, fullName: text}))}
                 />
               </View>
             </View>
@@ -61,6 +113,8 @@ export default function CreateNewAccount() {
                   placeholder="john.doe@example.com"
                   placeholderTextColor="#94a3b8"
                   keyboardType="email-address"
+                  autoCapitalize="none"
+                  onChangeText={(text) => setFormData(prev => ({...prev, email: text}))}
                 />
               </View>
             </View>
@@ -78,6 +132,7 @@ export default function CreateNewAccount() {
                   placeholder="+1 (555) 123-4567"
                   placeholderTextColor="#94a3b8"
                   keyboardType="phone-pad"
+                  onChangeText={(text) => setFormData(prev => ({...prev, phone: text}))}
                 />
               </View>
             </View>
@@ -95,6 +150,7 @@ export default function CreateNewAccount() {
                   placeholder="At least 6 characters"
                   placeholderTextColor="#94a3b8"
                   secureTextEntry
+                  onChangeText={(text) => setFormData(prev => ({...prev, password: text}))}
                 />
               </View>
             </View>
@@ -112,6 +168,7 @@ export default function CreateNewAccount() {
                   placeholder="Re-enter password"
                   placeholderTextColor="#94a3b8"
                   secureTextEntry
+                  onChangeText={(text) => setFormData(prev => ({...prev, confirmPassword: text}))}
                 />
               </View>
             </View>
@@ -129,8 +186,14 @@ export default function CreateNewAccount() {
             </View>
 
             {/* Create Account Button */}
-            <Pressable style={styles.primaryButton}>
-              <Text style={styles.primaryButtonText}>Create Account</Text>
+            <Pressable
+              style={styles.primaryButton}
+              onPress={handleSignUp}
+              disabled={loading}
+            >
+              <Text style={styles.primaryButtonText}>
+                {loading ? "Creating..." : "Create Account"}
+              </Text>
             </Pressable>
 
             {/* Already have account */}
@@ -149,6 +212,7 @@ export default function CreateNewAccount() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#E7F1FF" },
+  buttonDisabled: {opacity: 0.6,},
   gradient: { flex: 1 },
   scroll: { paddingHorizontal: 24, paddingVertical: 32 },
   header: { marginBottom: 24, alignItems: "center" },
