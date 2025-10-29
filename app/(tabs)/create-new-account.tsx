@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   StyleSheet,
   View,
@@ -7,11 +7,14 @@ import {
   TextInput,
   ScrollView,
   Image,
+  Alert,
 } from "react-native";
+
 import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { supabase } from "../../lib/supabase";
+
 
 export default function CreateNewAccount() {
   const router = useRouter();
@@ -25,6 +28,12 @@ export default function CreateNewAccount() {
   });
 
   const handleSignUp = async () => {
+
+    console.log("🔧 Starting signup process...");
+    console.log("📧 Email:", formData.email);
+    console.log("🔑 Password length:", formData.password.length);
+    console.log("🌐 Supabase client initialized:", !!supabase);
+
     // Basic validation
     if (formData.password !== formData.confirmPassword) {
       Alert.alert("Error", "Passwords don't match");
@@ -46,14 +55,13 @@ export default function CreateNewAccount() {
       }
 
       if (data.user) {
-        // Update user profile with name and phone
         await supabase
-          .from('users')
-          .update({
+          .from('profiles')
+          .upsert({
+            user_id: data.user.id,
             username: formData.fullName,
             phone: formData.phone
-          })
-          .eq('user_id', data.user.id);
+          });
 
         Alert.alert("Success!", "Account created successfully!");
         router.push("/login");

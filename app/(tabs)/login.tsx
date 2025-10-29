@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   SafeAreaView,
   StyleSheet,
@@ -8,12 +8,57 @@ import {
   Image,
   Pressable,
   TouchableOpacity,
+  Alert,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
+import { supabase } from "../../lib/supabase";
 
-export default function login() {
+export default function Login() {
   const router = useRouter();
+  const [loading, setLoading] = useState(false);
+  const [formData, setFormData] = useState({
+    email: "",
+    password: ""
+  });
+
+  const handleLogin = async () => {
+    // Basic validation
+    if (!formData.email || !formData.password) {
+      Alert.alert("Error", "Please enter both email and password");
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      console.log("🔧 Attempting login...", formData.email);
+
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: formData.email,
+        password: formData.password,
+      });
+
+      console.log("📨 Login response:", { data, error });
+
+      if (error) {
+        Alert.alert("Login Failed", error.message);
+        return;
+      }
+
+      if (data.user) {
+        console.log("✅ Login successful:", data.user.id);
+        Alert.alert("Success!", "Welcome back!");
+        router.push("/home");
+      }
+
+    } catch (error) {
+      console.log("💥 Unexpected error:", error);
+      Alert.alert("Error", "Something went wrong");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -46,6 +91,9 @@ export default function login() {
                 placeholder="john.doe@example.com"
                 placeholderTextColor="#94a3b8"
                 style={styles.input}
+                value={formData.email}
+                onChangeText={(text) => setFormData(prev => ({...prev, email: text}))}
+                autoCapitalize="none"
               />
             </View>
           </View>
@@ -62,6 +110,8 @@ export default function login() {
                 placeholderTextColor="#94a3b8"
                 secureTextEntry
                 style={styles.input}
+                value={formData.password}
+                onChangeText={(text) => setFormData(prev => ({...prev, password: text}))}
               />
             </View>
           </View>
@@ -72,8 +122,14 @@ export default function login() {
           </TouchableOpacity>
 
           {/* Sign In Button */}
-          <Pressable style={styles.signInButton} onPress={() => router.push("/home") }>
-            <Text style={styles.signInText}>Sign In</Text>
+          <Pressable
+            style={styles.signInButton}
+            onPress={handleLogin}
+            disabled={loading}
+          >
+            <Text style={styles.signInText}>
+              {loading ? "Signing In..." : "Sign In"}
+            </Text>
           </Pressable>
         </View>
 
