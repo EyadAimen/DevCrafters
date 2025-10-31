@@ -4,6 +4,7 @@ import {
   StyleSheet,
   View,
   Text,
+  Animated,
   TextInput,
   Image,
   Pressable,
@@ -22,43 +23,41 @@ export default function Login() {
     password: ""
   });
 
+  const [toast, setToast] = useState({ visible: false, message: "", type: "" });
+
+  const showToast = (message: string, type: string = "success") => {
+    setToast({ visible: true, message, type });
+    setTimeout(() => setToast({ visible: false, message: "", type: "" }), 3000);
+  };
+
+
   const handleLogin = async () => {
-    // Basic validation
     if (!formData.email || !formData.password) {
-      Alert.alert("Error", "Please enter both email and password");
+      showToast("Please enter both email and password", "error");
       return;
     }
 
     setLoading(true);
 
     try {
-      console.log("🔧 Attempting login...", formData.email);
-
       const { data, error } = await supabase.auth.signInWithPassword({
         email: formData.email,
         password: formData.password,
       });
 
-      console.log("📨 Login response:", { data, error });
-
       if (error) {
-        Alert.alert("Login Failed", error.message);
-        return;
+        showToast("Email or password is incorrect", "error");
+      } else {
+        showToast("Welcome back!", "success");
+        setTimeout(() => router.push("/home"), 1500);
       }
-
-      if (data.user) {
-        console.log("✅ Login successful:", data.user.id);
-        Alert.alert("Success!", "Welcome back!");
-        router.push("/home");
-      }
-
     } catch (error) {
-      console.log("💥 Unexpected error:", error);
-      Alert.alert("Error", "Something went wrong");
+      showToast("Something went wrong", "error");
     } finally {
       setLoading(false);
     }
   };
+
 
   return (
     <SafeAreaView style={styles.container}>
@@ -153,6 +152,14 @@ export default function Login() {
           By continuing, you agree to our Terms of Service and Privacy Policy
         </Text>
       </LinearGradient>
+      {toast.visible && (
+        <View style={{
+          position: "absolute",top: 60,left: 20,right: 20,padding: 16,borderRadius: 12, alignItems: "center", backgroundColor: toast.type === "success" ? "#0ea5e9" : "#ef4444", shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 8, elevation: 5,
+        }}>
+          <Text style={{color: "#fff", fontWeight: "500", fontSize: 14,
+          }}>{toast.message}</Text>
+       </View>
+      )}
     </SafeAreaView>
   );
 }

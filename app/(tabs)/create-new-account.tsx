@@ -3,6 +3,7 @@ import {
   StyleSheet,
   View,
   Text,
+  Animated,
   Pressable,
   TextInput,
   ScrollView,
@@ -27,30 +28,29 @@ export default function CreateNewAccount() {
     confirmPassword: ""
   });
 
+  const [toast, setToast] = useState({ visible: false, message: "", type: "" });
+
+  const showToast = (message: string, type: string = "success") => {
+    setToast({ visible: true, message, type });
+    setTimeout(() => setToast({ visible: false, message: "", type: "" }), 3000);
+  };
+
   const handleSignUp = async () => {
-
-    console.log("🔧 Starting signup process...");
-    console.log("📧 Email:", formData.email);
-    console.log("🔑 Password length:", formData.password.length);
-    console.log("🌐 Supabase client initialized:", !!supabase);
-
-    // Basic validation
     if (formData.password !== formData.confirmPassword) {
-      Alert.alert("Error", "Passwords don't match");
+      showToast("Passwords don't match", "error"); // CHANGED
       return;
     }
 
     setLoading(true);
 
     try {
-      // Create user in Supabase
       const { data, error } = await supabase.auth.signUp({
         email: formData.email,
         password: formData.password,
       });
 
       if (error) {
-        Alert.alert("Signup Failed", error.message);
+        showToast(error.message, "error"); // CHANGED
         return;
       }
 
@@ -63,12 +63,12 @@ export default function CreateNewAccount() {
             phone: formData.phone
           });
 
-        Alert.alert("Success!", "Account created successfully!");
-        router.push("/login");
+        showToast("Account created successfully!", "success"); // CHANGED
+        setTimeout(() => router.push("/login"), 1500); // ADDED DELAY
       }
 
     } catch (error) {
-      Alert.alert("Error", "Something went wrong");
+      showToast("Something went wrong", "error"); // CHANGED
     } finally {
       setLoading(false);
     }
@@ -214,6 +214,14 @@ export default function CreateNewAccount() {
           </View>
         </ScrollView>
       </LinearGradient>
+      {toast.visible && (
+        <View style={{
+          position: "absolute",top: 60,left: 20,right: 20,padding: 16,borderRadius: 12, alignItems: "center", backgroundColor: toast.type === "success" ? "#0ea5e9" : "#ef4444", shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 8, elevation: 5,
+        }}>
+          <Text style={{color: "#fff", fontWeight: "500", fontSize: 14,
+          }}>{toast.message}</Text>
+        </View>
+      )}
     </SafeAreaView>
   );
 }

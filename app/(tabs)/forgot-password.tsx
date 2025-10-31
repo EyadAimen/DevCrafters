@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   StyleSheet,
   View,
@@ -6,13 +6,40 @@ import {
   Text,
   Image,
   TextInput,
+  Alert,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
+import { supabase } from "../../lib/supabase";
 
 export default function ForgotPassword() {
   const router = useRouter();
+  const [email, setEmail] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const handleSendResetLink = async () => {
+    if (!email) {
+      Alert.alert("Error", "Please enter your email address");
+      return;
+    }
+
+    setLoading(true);
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: 'exp://192.168.0.10:8081/--/send-reset-link',
+    });
+
+    if (error) {
+      Alert.alert("Error", error.message);
+    } else {
+      Alert.alert(
+        "Success!",
+        "Password reset link sent! Check your email.",
+        [{ text: "OK", onPress: () => router.push("/login") }]
+      );
+    }
+    setLoading(false);
+  };
 
   return (
     <SafeAreaView style={styles.forgotPassword}>
@@ -41,6 +68,9 @@ export default function ForgotPassword() {
                 placeholder="john.doe@example.com"
                 style={styles.input}
                 keyboardType="email-address"
+                autoCapitalize="none"
+                value={email}
+                onChangeText={setEmail}
               />
             </View>
           </View>
@@ -54,8 +84,14 @@ export default function ForgotPassword() {
           </View>
 
           {/* Send Reset Link Button */}
-          <Pressable style={styles.button} onPress={() => router.push("/send-reset-link")}>
-            <Text style={styles.buttonText}>Send Reset Link</Text>
+          <Pressable
+            style={[styles.button, loading && styles.buttonDisabled]}
+            onPress={handleSendResetLink}
+            disabled={loading}
+          >
+            <Text style={styles.buttonText}>
+              {loading ? "Sending..." : "Send Reset Link"}
+            </Text>
           </Pressable>
 
           {/* Sign In Link */}
@@ -112,6 +148,9 @@ const styles = StyleSheet.create({
     width: "100%",
   },
   buttonText: { color: "#fff", fontSize: 16, fontWeight: "500" },
+  buttonDisabled: {
+    opacity: 0.6,
+  },
   footer: { flexDirection: "row", marginTop: 10 },
   footerText: { color: "#64748b", fontSize: 13 },
   signInText: { color: "#0ea5e9", fontSize: 13, fontWeight: "500" },
