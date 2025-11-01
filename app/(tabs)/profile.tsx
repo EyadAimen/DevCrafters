@@ -1,9 +1,11 @@
 import React from "react";
+import { useState, useEffect } from "react";
 import { View, Text, StyleSheet, Image, Pressable, ScrollView, useWindowDimensions, ImageSourcePropType } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView } from "react-native-safe-area-context";
 import BottomNavigation from "../../components/BottomNavigation";
 import { useRouter } from "expo-router";
+import { supabase } from "../../lib/supabase";
 
 type SettingRowProps = {
   title: string;
@@ -29,6 +31,47 @@ const SettingRow: React.FC<SettingRowProps> = ({ title, subtitle, icon, onPress 
 const Profile: React.FC = () => {
   const { width } = useWindowDimensions();
   const router = useRouter();
+  const [userData, setUserData] = useState({ username: '', email: '' });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchUserData();
+  }, []);
+
+  const fetchUserData = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('username')
+          .eq('user_id', user.id)
+          .single();
+
+        console.log('User ID:', user.id); // Debug log
+        console.log('Profile data:', profile); // Debug log
+
+        if (profile) {
+          setUserData({
+            username: profile.username,
+            email: user.email || 'No email' // Get email from auth user
+          });
+        } else {
+          // If no profile exists, use auth user data
+          setUserData({
+            username: 'User',
+            email: user.email || 'No email'
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching profile:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+
 
   return (
     <SafeAreaView style={styles.container}>
@@ -47,12 +90,13 @@ const Profile: React.FC = () => {
             end={{ x: 1, y: 1 }}
             style={styles.avatar}
           >
-            <Text style={styles.avatarText}>JD</Text>
+            <Text style={styles.avatarText}>
+              {userData.username ? userData.username.substring(0, 2).toUpperCase() : 'U'}
+            </Text>
           </LinearGradient>
           <View style={styles.userInfo}>
-            <Text style={styles.userName}>John Doe</Text>
-            <Text style={styles.userEmail}>john.doe@example.com</Text>
-            <Text style={styles.userSince}>Pillora member since Jan 2024</Text>
+            <Text style={styles.userName}>{userData.username || 'User'}</Text>
+            <Text style={styles.userEmail}>{userData.email || 'No email'}</Text>
           </View>
         </View>
 
@@ -97,7 +141,10 @@ const Profile: React.FC = () => {
         </View>
 
         {/* Logout */}
-        <Pressable style={styles.logoutButton} onPress={() => router.push("/login")}>
+        <Pressable style={styles.logoutButton} onPress={async () => {
+          await supabase.auth.signOut();
+          router.push("/login");
+        }}>
           <Text style={styles.logoutText}>Log Out</Text>
         </Pressable>
 

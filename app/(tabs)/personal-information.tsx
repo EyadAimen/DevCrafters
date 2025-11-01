@@ -3,6 +3,8 @@ import { Text, StyleSheet, View, Pressable, ScrollView, Image, ImageSourcePropTy
 import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
+import { useState, useEffect } from "react";
+import { supabase } from "../../lib/supabase";
 
 type InfoRowProps = {
   label: string;
@@ -22,6 +24,58 @@ const InfoRow: React.FC<InfoRowProps> = ({ label, value, icon }) => (
 
 const PersonalInformation: React.FC = () => {
   const router = useRouter();
+  const [userData, setUserData] = useState({
+    username: '',
+    phone: '',
+    date_of_birth: '',
+    address: '',
+    email: ''
+  });
+  const [emergencyContact, setEmergencyContact] = useState({
+    ec_name: '',
+    ec_phone: ''
+  });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchUserData();
+  }, []);
+
+  const fetchUserData = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        // Fetch from profiles table
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('username, phone, date_of_birth, address')
+          .eq('user_id', user.id)
+          .single();
+
+        // Fetch from emergency_contact table
+        const { data: emergency } = await supabase
+          .from('emergency_contact')
+          .select('ec_name, ec_phone')
+          .eq('user_id', user.id)
+          .single();
+
+        if (profile) {
+          setUserData({
+            ...profile,
+            email: user.email || 'No email'
+          });
+        }
+
+        if (emergency) {
+          setEmergencyContact(emergency);
+        }
+      }
+    } catch (error) {
+      console.error('Error:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -43,13 +97,15 @@ const PersonalInformation: React.FC = () => {
             end={{ x: 1, y: 1 }}
             style={styles.avatar}
           >
-            <Text style={styles.avatarText}>J</Text>
+            <Text style={styles.avatarText}>
+              {userData.username ? userData.username.substring(0, 1).toUpperCase() : 'U'}
+            </Text>
           </LinearGradient>
 
           <View style={styles.userInfoContainer}>
             <View style={styles.userInfo}>
-              <Text style={styles.userName}>John Doe</Text>
-              <Text style={styles.userSince}>Pillora member since Jan 2024</Text>
+              <Text style={styles.userName}>{userData.username || 'User'}</Text>
+              {/* Remove "Pillora member since" line */}
             </View>
             <Pressable style={styles.editButton} onPress={() => router.push("/edit-profile")}>
               <Text style={styles.editText}>Edit Profile</Text>
@@ -59,18 +115,18 @@ const PersonalInformation: React.FC = () => {
 
         {/* Personal Details */}
         <View style={styles.card}>
-          <InfoRow label="Full Name" value="John Doe" icon={require("../../assets/profileIcon.png")} />
-          <InfoRow label="Email Address" value="john.doe@example.com" icon={require("../../assets/emailIcon.png")} />
-          <InfoRow label="Phone Number" value="+60 12-345 6789" icon={require("../../assets/phoneIcon.png")} />
-          <InfoRow label="Date of Birth" value="15 January 1990" icon={require("../../assets/calanderIcon.png")} />
-          <InfoRow label="Address" value="123 Jalan Bukit Bintang, 55100 Kuala Lumpur" icon={require("../../assets/profileAddress.png")} />
+          <InfoRow label="Full Name" value={userData.username || 'Not set'} icon={require("../../assets/profileIcon.png")} />
+          <InfoRow label="Email Address" value={userData.email || 'Not set'} icon={require("../../assets/emailIcon.png")} />
+          <InfoRow label="Phone Number" value={userData.phone || 'Not set'} icon={require("../../assets/phoneIcon.png")} />
+          <InfoRow label="Date of Birth" value={userData.date_of_birth || 'Not set'} icon={require("../../assets/calanderIcon.png")} />
+          <InfoRow label="Address" value={userData.address || 'Not set'} icon={require("../../assets/profileAddress.png")} />
         </View>
 
         {/* Emergency Contact Section */}
         <Text style={styles.sectionTitle}>Emergency Contact</Text>
         <View style={styles.card}>
-          <InfoRow label="Contact Name" value="Jane Doe" icon={require("../../assets/profileIcon.png")} />
-          <InfoRow label="Phone Number" value="+60 12-987 6543" icon={require("../../assets/phoneIcon.png")} />
+          <InfoRow label="Contact Name" value={emergencyContact.ec_name || 'Not set'} icon={require("../../assets/profileIcon.png")} />
+          <InfoRow label="Phone Number" value={emergencyContact.ec_phone || 'Not set'} icon={require("../../assets/phoneIcon.png")} />
         </View>
       </ScrollView>
     </SafeAreaView>

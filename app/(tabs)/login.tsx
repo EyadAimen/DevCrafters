@@ -132,13 +132,6 @@ export default function Login() {
           </Pressable>
         </View>
 
-        {/* Demo Credentials */}
-        <View style={styles.demoBox}>
-          <Text style={styles.demoText}>Demo Credentials:</Text>
-          <Text style={styles.demoCreds}>Email: demo@example.com</Text>
-          <Text style={styles.demoCreds}>Password: demo123</Text>
-        </View>
-
         {/* Create New Account */}
         <View style={styles.bottomText}>
           <Text style={styles.normalText}>Don’t have an account? </Text>

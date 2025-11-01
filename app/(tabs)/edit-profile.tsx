@@ -1,19 +1,103 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { View, Text, StyleSheet, TextInput, ScrollView, Pressable, Image } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
+import { supabase } from "../../lib/supabase";
 
 const PersonalInformationEditProfile: React.FC = () => {
   const router = useRouter();
 
-  const [fullName, setFullName] = useState("John Doe");
-  const [email, setEmail] = useState("john.doe@example.com");
-  const [phone, setPhone] = useState("+60 12-345 6789");
-  const [dob, setDob] = useState("15 January 1990");
-  const [address, setAddress] = useState("123 Jalan Bukit Bintang, 55100 Kuala Lumpur");
-  const [emergencyName, setEmergencyName] = useState("Jane Doe");
-  const [emergencyPhone, setEmergencyPhone] = useState("+60 12-987 6543");
+  const [fullName, setFullName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [dob, setDob] = useState("");
+  const [address, setAddress] = useState("");
+  const [emergencyName, setEmergencyName] = useState("");
+  const [emergencyPhone, setEmergencyPhone] = useState("");
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchUserData();
+  }, []);
+
+  const fetchUserData = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        // Fetch from profiles table
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('username, phone, date_of_birth, address')
+          .eq('user_id', user.id)
+          .single();
+
+        // Fetch from emergency_contact table
+        const { data: emergency } = await supabase
+          .from('emergency_contact')
+          .select('ec_name, ec_phone')
+          .eq('user_id', user.id)
+          .single();
+
+        if (profile) {
+          setFullName(profile.username || '');
+          setPhone(profile.phone || '');
+          setDob(profile.date_of_birth || '');
+          setAddress(profile.address || '');
+          setEmail(user.email || '');
+        }
+
+        if (emergency) {
+          setEmergencyName(emergency.ec_name || '');
+          setEmergencyPhone(emergency.ec_phone || '');
+        }
+      }
+    } catch (error) {
+      console.error('Error:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSave = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        // Update profiles table
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .update({
+            username: fullName,
+            phone: phone,
+            date_of_birth: dob,
+            address: address,
+            updated_at: new Date().toISOString()
+          })
+          .eq('user_id', user.id);
+
+        // Update or insert emergency_contact
+        const { error: emergencyError } = await supabase
+          .from('emergency_contact')
+          .upsert({
+            user_id: user.id,
+            ec_name: emergencyName,
+            ec_phone: emergencyPhone,
+            updated_at: new Date().toISOString()
+          });
+
+        if (profileError || emergencyError) {
+          console.error('Error saving:', profileError || emergencyError);
+          alert('Error saving changes');
+        } else {
+          alert('Profile updated successfully!');
+          router.push("/personal-information");
+        }
+      }
+    } catch (error) {
+      console.error('Error:', error);
+      alert('Error saving changes');
+    }
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -152,7 +236,7 @@ const PersonalInformationEditProfile: React.FC = () => {
           end={{ x: 1, y: 1 }}
           style={styles.saveButton}
         >
-          <Pressable onPress={() => console.log("Save changes")} style={styles.savePressable}>
+          <Pressable onPress={handleSave} style={styles.savePressable}>
             <Text style={styles.saveText}>Save Changes</Text>
           </Pressable>
         </LinearGradient>
