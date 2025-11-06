@@ -74,9 +74,9 @@ const AddMedicine = () => {
 			}
 
 			// Prepare data for Supabase using actual database schema
-			// Ensure dosage has "mg" suffix if it's just a number
-			let dosageValue = formData.dosage.trim();
-			if (dosageValue && /^\d+$/.test(dosageValue)) {
+			// Ensure dosage has "mg" suffix - formData.dosage should only contain numbers
+			let dosageValue = formData.dosage.trim().replace(/[^0-9]/g, '');
+			if (dosageValue) {
 				dosageValue = dosageValue + "mg";
 			}
 			
@@ -203,21 +203,21 @@ const AddMedicine = () => {
 								<Text style={styles.label}>Dosage</Text>
 								<Text style={styles.required}>*</Text>
 							</View>
-							<TextInput
-								style={styles.input}
-								placeholder="e.g., 10 (will show as 10mg)"
-								placeholderTextColor="#64748b"
-								value={formData.dosage}
-								onChangeText={(value) => {
-									// Auto-append "mg" if user enters only numbers
-									if (value && /^\d+$/.test(value)) {
-										handleInputChange("dosage", value + "mg");
-									} else {
-										handleInputChange("dosage", value);
-									}
-								}}
-								keyboardType="numeric"
-							/>
+							<View style={styles.dosageInputContainer}>
+								<TextInput
+									style={styles.dosageInput}
+									placeholder="e.g., 10"
+									placeholderTextColor="#64748b"
+									value={formData.dosage.replace(/mg$/i, '').trim()}
+									onChangeText={(value) => {
+										// Only allow numeric input
+										const numericValue = value.replace(/[^0-9]/g, '');
+										handleInputChange("dosage", numericValue);
+									}}
+									keyboardType="numeric"
+								/>
+								<Text style={styles.dosageUnit}>mg</Text>
+							</View>
 						</View>
 
 						{/* Frequency */}
@@ -425,6 +425,28 @@ const styles = StyleSheet.create({
 		borderWidth: 1.3,
 		borderColor: "rgba(0, 0, 0, 0)",
 		minHeight: 36
+	},
+	dosageInputContainer: {
+		flexDirection: "row",
+		alignItems: "center",
+		backgroundColor: "#f8fafc",
+		borderRadius: 14,
+		borderWidth: 1.3,
+		borderColor: "rgba(0, 0, 0, 0)",
+		minHeight: 36,
+		paddingRight: 12
+	},
+	dosageInput: {
+		flex: 1,
+		paddingHorizontal: 12,
+		paddingVertical: 10,
+		fontSize: 14,
+		color: "#0f172a"
+	},
+	dosageUnit: {
+		fontSize: 14,
+		color: "#64748b",
+		fontWeight: "500"
 	},
 	selectInput: {
 		backgroundColor: "#f8fafc",
