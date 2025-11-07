@@ -1,6 +1,7 @@
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import * as React from "react";
+import { useEffect, useState } from "react";
 import {
     Image,
     Pressable,
@@ -11,9 +12,89 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import BottomNavigation from "../../components/BottomNavigation";
+import { supabase } from "../../lib/supabase";
+
+type Medicine = {
+    id: string;
+    name: string;
+    strength: string;
+    quantity: number;
+    expiryDate?: string;
+};
 
 export default function Home() {
   const router = useRouter();
+  const [medicines, setMedicines] = useState<Medicine[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [dueTodayCount, setDueTodayCount] = useState(0);
+  const [lowStockMed, setLowStockMed] = useState<Medicine | null>(null);
+
+  useEffect(() => {
+    fetchMedicines();
+  }, []);
+
+  const fetchMedicines = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        setLoading(false);
+        return;
+      }
+
+      // Fetch medicines from Supabase
+      const { data: medicinesData, error: medicinesError } = await supabase
+        .from('medicines')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('medicine_name', { ascending: true });
+
+      if (medicinesError) {
+        console.error('Error fetching medicines:', medicinesError);
+        setMedicines([]);
+        setLoading(false);
+        return;
+      }
+
+      if (!medicinesData) {
+        setMedicines([]);
+        setLoading(false);
+        return;
+      }
+
+      // Map database fields to Medicine type
+      const mappedMedicines: Medicine[] = medicinesData.map((med: any) => ({
+        id: med.id,
+        name: med.medicine_name || '',
+        strength: med.dosage || '',
+        quantity: med.current_stock || 0,
+        expiryDate: med.expiry_date || undefined
+      }));
+
+      setMedicines(mappedMedicines);
+
+      // Calculate due today count
+      const today = new Date();
+      const dueToday = mappedMedicines.filter((med) => {
+        if (!med.expiryDate) return false;
+        const expiryDate = new Date(med.expiryDate);
+        return expiryDate.getFullYear() === today.getFullYear() &&
+          expiryDate.getMonth() === today.getMonth() &&
+          expiryDate.getDate() === today.getDate();
+      });
+      setDueTodayCount(dueToday.length);
+
+      // Find lowest stock medicine
+      const lowStock = mappedMedicines
+        .filter((med) => med.quantity <= 5)
+        .sort((a, b) => a.quantity - b.quantity)[0] || null;
+      setLowStockMed(lowStock);
+    } catch (error) {
+      console.error('Error:', error);
+      setMedicines([]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -50,11 +131,13 @@ export default function Home() {
                   <Text style={styles.cardTitle}>Upcoming Doses</Text>
                   <View style={styles.row}>
                     <Text style={styles.cardSubtitle}>
-                      2 medications due today
+                      {dueTodayCount === 1 ? '1 medication due today' : `${dueTodayCount} medications due today`}
                     </Text>
-                    <View style={styles.badge}>
-                      <Text style={styles.badgeText}>2</Text>
-                    </View>
+                    {dueTodayCount > 0 && (
+                      <View style={styles.badge}>
+                        <Text style={styles.badgeText}>{dueTodayCount}</Text>
+                      </View>
+                    )}
                   </View>
                 </View>
               </Pressable>
@@ -62,14 +145,14 @@ export default function Home() {
 
             {/* ---------- Active Meds & Adherence ---------- */}
             <View style={styles.rowBetween}>
-              <Pressable style={[styles.smallCard]} onPress={() => {}}>
+              <Pressable style={[styles.smallCard]} onPress={() => {router.push("/meds")}}>
                 <View style={styles.smallCardContent}>
                   <Image
                     source={require("../../assets/pillIconBlue.png")}
                     style={styles.smallIcon}
                   />
                   <Text style={styles.smallLabel}>Active Meds</Text>
-                  <Text style={styles.smallValue}>5</Text>
+                  <Text style={styles.smallValue}>{loading ? '...' : medicines.length}</Text>
                 </View>
               </Pressable>
 
@@ -146,19 +229,27 @@ export default function Home() {
                 />
                 <View style={styles.alertTextContainer}>
                   <Text style={styles.alertTitle}>Low Stock Alert</Text>
-                  <Text style={styles.alertSubtitle}>
-                    Aspirin (81mg) has only 3 pills remaining
-                  </Text>
-                  <LinearGradient
-                    style={styles.refillButton}
-                    colors={["#f59e0b", "#d97706"]}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                  >
-                    <Pressable onPress={() => {}}>
-                      <Text style={styles.refillText}>Request Refill</Text>
-                    </Pressable>
-                  </LinearGradient>
+                  {lowStockMed ? (
+                    <>
+                      <Text style={styles.alertSubtitle}>
+                        {lowStockMed.name} ({lowStockMed.strength}) has only {lowStockMed.quantity} {lowStockMed.quantity === 1 ? 'pill' : 'pills'} remaining
+                      </Text>
+                      <LinearGradient
+                        style={styles.refillButton}
+                        colors={["#f59e0b", "#d97706"]}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                      >
+                        <Pressable onPress={() => router.push("/meds")}>
+                          <Text style={styles.refillText}>Request Refill</Text>
+                        </Pressable>
+                      </LinearGradient>
+                    </>
+                  ) : (
+                    <Text style={styles.alertSubtitle}>
+                      All medications are well stocked
+                    </Text>
+                  )}
                 </View>
               </View>
             </LinearGradient>
