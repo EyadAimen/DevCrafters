@@ -1,6 +1,6 @@
+import React, { useState } from 'react';
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import * as React from "react";
 import {
     Image,
     Pressable,
@@ -8,12 +8,42 @@ import {
     StyleSheet,
     Text,
     View,
+    Modal,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import BottomNavigation from "../../components/BottomNavigation";
 
-export default function Home() {
-  const router = useRouter();
+export default function Reminders() {
+  const [showAddReminder, setShowAddReminder] = useState(false);
+  const [medicines, setMedicines] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  // Fetch medicines when modal opens
+  useEffect(() => {
+    if (showAddReminder) {
+      fetchMedicines();
+    }
+  }, [showAddReminder]);
+
+  const fetchMedicines = async () => {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('medicine')
+        .select('medicine_name')
+        .order('medicine_name');
+
+      if (error) {
+        console.error('Error fetching medicines:', error);
+      } else {
+        setMedicines(data || []);
+      }
+    } catch (error) {
+      console.error('Error:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -115,7 +145,7 @@ export default function Home() {
             <View style={styles.meds}>
               <View style={styles.remindersHeader}>
                 <Text style={styles.titlemeds}>Your Reminders</Text>
-                <Pressable style={styles.addButton} onPress={() => {}}>
+                <Pressable style={styles.addButton} onPress={() => setShowAddReminder(true)}>
                   <Text style={styles.addButtonText}>+ Add New</Text>
                 </Pressable>
               </View>
@@ -124,16 +154,28 @@ export default function Home() {
               <View style={styles.reminderCard}>
                 <View style={styles.reminderHeader}>
                   <Text style={styles.medName}>Lisinopril 10mg</Text>
-                  <Text style={styles.medTime}>8:00 AM</Text>
+                  <View style={styles.toggle}>
+                    {/* Toggle switch would go here */}
+                  </View>
                 </View>
-                <Text style={styles.frequency}>Daily</Text>
+                <View style={styles.frequencyContainer}>
+                  <Text style={styles.frequencyText}>Daily</Text>
+                </View>
                 <Text style={styles.nextDose}>Next: Tomorrow at 8:00 AM</Text>
                 <View style={styles.reminderActions}>
                   <Pressable style={styles.actionButton}>
-                    <Text style={styles.actionText}>Edit</Text>
+                    <Image
+                      source={require("../../assets/edit.png")}
+                      style={styles.smallIcon}
+                    />
+                    <Text style={styles.actionText}> Edit</Text>
                   </Pressable>
                   <Pressable style={styles.actionButton}>
-                    <Text style={styles.actionText}>Delete</Text>
+                    <Image
+                      source={require("../../assets/deleteIcon.png")}
+                      style={styles.smallIcon}
+                    />
+                    <Text style={styles.actionText}> Delete</Text>
                   </Pressable>
                 </View>
               </View>
@@ -142,16 +184,28 @@ export default function Home() {
               <View style={styles.reminderCard}>
                 <View style={styles.reminderHeader}>
                   <Text style={styles.medName}>Metformin 500mg</Text>
-                  <Text style={styles.medTime}>7:00 PM</Text>
+                  <View style={styles.toggle}>
+                    {/* Toggle switch would go here */}
+                  </View>
                 </View>
-                <Text style={styles.frequency}>Twice Daily</Text>
+                <View style={styles.frequencyContainer}>
+                  <Text style={styles.frequencyText}>Twice Daily</Text>
+                </View>
                 <Text style={styles.nextDose}>Next: Today at 7:00 PM</Text>
                 <View style={styles.reminderActions}>
                   <Pressable style={styles.actionButton}>
-                    <Text style={styles.actionText}>Edit</Text>
+                    <Image
+                      source={require("../../assets/edit.png")}
+                      style={styles.smallIcon}
+                    />
+                    <Text style={styles.actionText}> Edit</Text>
                   </Pressable>
                   <Pressable style={styles.actionButton}>
-                    <Text style={styles.actionText}>Delete</Text>
+                    <Image
+                      source={require("../../assets/deleteIcon.png")}
+                      style={styles.smallIcon}
+                    />
+                    <Text style={styles.actionText}> Delete</Text>
                   </Pressable>
                 </View>
               </View>
@@ -164,6 +218,57 @@ export default function Home() {
         <View style={styles.bottomNavWrapper}>
           <BottomNavigation />
         </View>
+
+        {/* ---------- Add Reminder ---------- */}
+        <Modal
+          visible={showAddReminder}
+          transparent={true}
+          animationType="slide"
+          onRequestClose={() => setShowAddReminder(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContainer}>
+              {/* Header */}
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Create Reminder</Text>
+                <Pressable onPress={() => setShowAddReminder(false)}>
+                  <Text style={styles.closeButton}>×</Text>
+                </Pressable>
+              </View>
+
+              {/* Medication Selection */}
+              <View style={styles.modalSection}>
+                <Text style={styles.sectionLabel}>Medication</Text>
+                <Pressable style={styles.dropdown}>
+                  <Text style={styles.dropdownText}>Select medication</Text>
+                  <Text>⌄</Text>
+                </Pressable>
+              </View>
+
+              {/* Time Selection */}
+              <View style={styles.modalSection}>
+                <Text style={styles.sectionLabel}>Time</Text>
+                <Pressable style={styles.timeInput}>
+                  <Text>8:00 PM</Text>
+                </Pressable>
+              </View>
+
+              {/* Frequency Selection */}
+              <View style={styles.modalSection}>
+                <Text style={styles.sectionLabel}>Frequency</Text>
+                <Pressable style={styles.dropdown}>
+                  <Text style={styles.dropdownText}>Select frequency</Text>
+                  <Text>⌄</Text>
+                </Pressable>
+              </View>
+
+              {/* Create Button */}
+              <Pressable style={styles.createButton}>
+                <Text style={styles.createButtonText}>Create Reminder</Text>
+              </Pressable>
+            </View>
+          </View>
+        </Modal>
       </View>
     </SafeAreaView>
   );
@@ -363,27 +468,111 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: '#0ea5e9',
   },
-  frequency: {
-    fontSize: 14,
-    color: '#64748b',
+  frequencyContainer: {
+    borderRadius: 6,
+    backgroundColor: "#E0F2FE",
+    alignSelf: 'flex-start',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
     marginBottom: 4,
+  },
+  frequencyText: {
+    fontSize: 14,
+    color: "#0c4a6e",
   },
   nextDose: {
     fontSize: 14,
-    color: '#64748b',
+    color: '#0EA5E9',
     marginBottom: 12,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)', // Semi-transparent background
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContainer: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 20,
+    width: '100%',
+    maxWidth: 400,
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 10,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  closeButton: {
+    fontSize: 24,
+    color: '#64748b',
+    paddingHorizontal: 8,
+  },
+  modalSection: {
+    marginBottom: 20,
+  },
+  sectionLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 8,
+    color: '#000',
+  },
+  dropdown: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 8,
+    padding: 12,
+    backgroundColor: '#f8fafc',
+  },
+  dropdownText: {
+    color: '#64748b',
+  },
+  timeInput: {
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 8,
+    padding: 12,
+    backgroundColor: '#f8fafc',
+  },
+  createButton: {
+    backgroundColor: '#0ea5e9',
+    borderRadius: 8,
+    padding: 16,
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  createButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
   reminderActions: {
     flexDirection: 'row',
     gap: 16,
   },
   actionButton: {
+    flexDirection: "row",
     paddingVertical: 6,
-    paddingHorizontal: 12,
-    backgroundColor: '#f8fafc',
-    borderRadius: 6,
   },
   actionText: {
+    flexDirection: "row",
     fontSize: 14,
     color: '#64748b',
   },

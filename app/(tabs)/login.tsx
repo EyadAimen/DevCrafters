@@ -46,7 +46,7 @@ export default function Login() {
       });
 
       if (error) {
-        showToast("Email or password is incorrect", "error");
+        showToast(error.message, "error");
       } else {
         showToast("Welcome back!", "success");
         setTimeout(() => router.push("/home"), 1500);
