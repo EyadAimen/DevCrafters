@@ -34,7 +34,7 @@ export default function MedicineDetailsWarnings() {
     useEffect(() => {
         const fetchWarnings = async () => {
             setLoading(true);
-            
+
             try {
                 // First get the medicine data
                 const { data: medicineData, error: medicineError } = await supabase
@@ -103,7 +103,7 @@ export default function MedicineDetailsWarnings() {
         <ScrollView style={styles.container} contentContainerStyle={{ padding: 16 }}>
             {/* Header with back button */}
             <View style={styles.header}>
-                <TouchableOpacity 
+                <TouchableOpacity
                     style={styles.backButton}
                     onPress={() => router.push("/(tabs)/meds")}
                 >
@@ -177,31 +177,41 @@ export default function MedicineDetailsWarnings() {
             </View>
 
             {/* Important warnings highlight */}
+            {/* Important warnings highlight */}
             <View style={{ marginTop: 20 }}>
-                <View style={styles.warningHighlight}>
-                    <Text style={styles.warningHighlightText}>
+                {/* Yellow warning header */}
+                <View style={styles.warningHeader}>
+                    <View style={styles.warningHeaderRow}>
+                        <Ionicons name="warning-outline" size={22} color="#f59e0b" style={{ marginRight: 8 }} />
+                        <Text style={styles.warningHeaderTitle}>Important Warnings</Text>
+                    </View>
+                    <Text style={styles.warningHeaderText}>
                         Review these contraindications carefully before taking this medication
                     </Text>
                 </View>
 
-                {/* Warnings content */}
+                {/* Warnings list */}
                 <View style={{ marginTop: 12 }}>
                     {ref?.warnings ? (
-                        <View style={styles.pillRow}>
-                            <View style={styles.pillIndex}>
-                                <Text style={styles.pillIndexText}>!</Text>
-                            </View>
-                            <View style={styles.pillContent}>
-                                <Text style={styles.pillText}>{ref.warnings}</Text>
-                            </View>
-                        </View>
+                        ref.warnings
+                            .split(",")
+                            .map((item, index) => (
+                                <View key={index} style={styles.warningItemRow}>
+                                    <View style={styles.warningNumber}>
+                                        <Text style={styles.warningNumberText}>{index + 1}</Text>
+                                    </View>
+                                    <View style={styles.warningItem}>
+                                        <Text style={styles.warningItemText}>{item.trim()}</Text>
+                                    </View>
+                                </View>
+                            ))
                     ) : (
-                        <View style={styles.pillRow}>
-                            <View style={styles.pillIndex}>
-                                <Text style={styles.pillIndexText}>!</Text>
+                        <View style={styles.warningItemRow}>
+                            <View style={styles.warningNumber}>
+                                <Text style={styles.warningNumberText}>!</Text>
                             </View>
-                            <View style={styles.pillContent}>
-                                <Text style={styles.pillText}>
+                            <View style={styles.warningItem}>
+                                <Text style={styles.warningItemText}>
                                     No specific warnings information available for this medication.
                                 </Text>
                             </View>
@@ -209,16 +219,21 @@ export default function MedicineDetailsWarnings() {
                     )}
                 </View>
 
+                {/* Footer info */}
                 <View style={{ marginTop: 14 }}>
                     <View style={styles.infoFooter}>
+                        <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 4 }}>
+                            <Ionicons name="information-circle-outline" size={18} color="#0ea5e9" style={{ marginRight: 6 }} />
+                            <Text style={styles.infoFooterTitle}>Important Note</Text>
+                        </View>
                         <Text style={styles.infoFooterText}>
-                            Always consult your healthcare provider before starting, stopping, or
-                            changing your medication regimen. This information is for educational
-                            purposes only.
+                            Always consult your healthcare provider before starting, stopping, or changing your medication
+                            regimen. This information is for educational purposes only.
                         </Text>
                     </View>
                 </View>
             </View>
+
         </ScrollView >
     );
 }
@@ -272,6 +287,77 @@ const styles = StyleSheet.create({
     reminderText: { color: "#0369a1", fontWeight: "600" },
     refillText: { color: "#fff", fontWeight: "600" },
 
+    warningHeader: {
+        backgroundColor: "#fff7ed",
+        borderRadius: 12,
+        padding: 14,
+        borderWidth: 1,
+        borderColor: "#fde3b7",
+    },
+    warningHeaderRow: {
+        flexDirection: "row",
+        alignItems: "center",
+        marginBottom: 4,
+    },
+    warningHeaderTitle: {
+        fontSize: 15,
+        fontWeight: "700",
+        color: "#92400e",
+    },
+    warningHeaderText: {
+        color: "#92400e",
+        fontSize: 13,
+        lineHeight: 18,
+    },
+
+    warningItemRow: {
+        flexDirection: "row",
+        alignItems: "flex-start",
+        marginBottom: 10,
+    },
+    warningNumber: {
+        width: 30,
+        height: 30,
+        borderRadius: 15,
+        backgroundColor: "#fee2e2",
+        alignItems: "center",
+        justifyContent: "center",
+        marginRight: 10,
+    },
+    warningNumberText: {
+        color: "#ef4444",
+        fontWeight: "700",
+    },
+    warningItem: {
+        flex: 1,
+        backgroundColor: "#fff",
+        borderRadius: 12,
+        padding: 12,
+        borderWidth: 1,
+        borderColor: "#e6eef6",
+    },
+    warningItemText: {
+        color: "#475569",
+        lineHeight: 20,
+    },
+
+    infoFooter: {
+        backgroundColor: "#eff6ff",
+        borderRadius: 12,
+        padding: 12,
+        borderWidth: 1,
+        borderColor: "#dbeafe",
+    },
+    infoFooterTitle: {
+        color: "#0c4a6e",
+        fontWeight: "600",
+    },
+    infoFooterText: {
+        color: "#1e293b",
+        lineHeight: 20,
+        fontSize: 13,
+    },
+
     tabsWrap: {
         flexDirection: "row",
         justifyContent: "space-around",
@@ -320,12 +406,4 @@ const styles = StyleSheet.create({
     },
     pillText: { color: "#475569", lineHeight: 20 },
 
-    infoFooter: {
-        backgroundColor: "#eff6ff",
-        borderRadius: 12,
-        padding: 12,
-        borderWidth: 1,
-        borderColor: "#dbeafe",
-    },
-    infoFooterText: { color: "#1e293b", lineHeight: 20 },
 });
