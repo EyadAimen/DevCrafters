@@ -54,7 +54,6 @@ export default function MedicineDetailsInfo() {
             setLoading(true);
 
             try {
-                // First get the medicine data
                 const { data: medicineData, error: medicineError } = await supabase
                     .from("medicines")
                     .select("*")
@@ -66,37 +65,23 @@ export default function MedicineDetailsInfo() {
                     return;
                 }
 
-                console.log("Medicine data:", medicineData);
-
-                // Then get reference data if reference_id exists
                 let referenceData = null;
                 if (medicineData.reference_id) {
-                    console.log("Fetching reference for ID:", medicineData.reference_id);
-                    
                     const { data: refData, error: refError } = await supabase
                         .from("medicine_reference")
                         .select("*")
                         .eq("drug_id", medicineData.reference_id)
                         .single();
 
-                    console.log("Reference fetch result:", refData, refError);
-                    
                     if (!refError && refData) {
                         referenceData = refData;
-                    } else {
-                        console.error("Error fetching reference data:", refError);
                     }
                 }
 
-                // Combine the data
-                const combinedData = {
+                setData({
                     ...medicineData,
-                    medicine_reference: referenceData
-                };
-
-                console.log("Final combined data:", combinedData);
-                setData(combinedData as MedicineData);
-
+                    medicine_reference: referenceData,
+                } as MedicineData);
             } catch (error) {
                 console.error("Error in fetchMedicine:", error);
             } finally {
@@ -127,7 +112,7 @@ export default function MedicineDetailsInfo() {
         <ScrollView style={styles.container} contentContainerStyle={{ padding: 16 }}>
             {/* Header with back button */}
             <View style={styles.header}>
-                <TouchableOpacity 
+                <TouchableOpacity
                     style={styles.backButton}
                     onPress={() => router.push("/(tabs)/meds")}
                 >
@@ -198,36 +183,49 @@ export default function MedicineDetailsInfo() {
                 </TouchableOpacity>
             </View>
 
-            {/* Info sections */}
-            <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Purpose</Text>
-                <Text style={styles.sectionText}>
+            {/* Info Cards */}
+            <View style={styles.card}>
+                <Text style={styles.cardTitle}>Purpose</Text>
+                <Text style={styles.cardText}>
                     {data.medicine_reference?.purpose || "No information available."}
                 </Text>
             </View>
 
-            <View style={styles.section}>
-                <Text style={styles.sectionTitle}>How to Take</Text>
-                <Text style={styles.sectionText}>
-                    {data.medicine_reference?.how_to_take || "No information available."}
+            <View style={styles.card}>
+                <Text style={styles.cardTitle}>How to Take</Text>
+
+                {data.medicine_reference?.how_to_take ? (
+                    data.medicine_reference.how_to_take
+                        .split(",")
+                        .map((instruction, index) => (
+                            <View key={index} style={styles.bulletRow}>
+                                <Text style={styles.bullet}>•</Text>
+                                <Text style={styles.bulletText}>{instruction.trim()}</Text>
+                            </View>
+                        ))
+                ) : (
+                    <Text style={styles.cardText}>No information available.</Text>
+                )}
+            </View>
+
+
+            <View style={styles.card}>
+                <Text style={styles.cardTitle}>Drug Interactions</Text>
+                <Text style={styles.cardText}>
+                    {data.medicine_reference?.drug_interactions ||
+                        "No information available."}
                 </Text>
             </View>
 
-            <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Drug Interactions</Text>
-                <Text style={styles.sectionText}>
-                    {data.medicine_reference?.drug_interactions || "No information available."}
-                </Text>
-            </View>
-
-            <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Storage</Text>
-                <Text style={styles.sectionText}>
+            <View style={styles.card}>
+                <Text style={styles.cardTitle}>Storage</Text>
+                <Text style={styles.cardText}>
                     {data.medicine_reference?.storage || "No information available."}
                 </Text>
             </View>
 
-            <View style={styles.footer}>
+            {/* Footer Info */}
+            <View style={styles.footerCard}>
                 <Text style={styles.footerLabel}>Manufacturer</Text>
                 <Text style={styles.footerValue}>
                     {data.medicine_reference?.manufacturer || "No information available."}
@@ -237,6 +235,8 @@ export default function MedicineDetailsInfo() {
                     {data.medicine_reference?.ndc_number || "No information available."}
                 </Text>
             </View>
+
+            <View style={{ height: 40 }} />
         </ScrollView>
     );
 }
@@ -245,6 +245,7 @@ const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: "#f8fafc" },
     center: { flex: 1, justifyContent: "center", alignItems: "center" },
     grayText: { color: "gray" },
+
     header: {
         flexDirection: "row",
         alignItems: "center",
@@ -254,23 +255,48 @@ const styles = StyleSheet.create({
         padding: 8,
         marginRight: 12,
     },
-    titleContainer: {
-        flex: 1,
-    },
+    titleContainer: { flex: 1 },
     title: { fontSize: 22, fontWeight: "700", color: "#0f172a" },
     subtitle: { fontSize: 14, color: "#64748b", marginTop: 2 },
+
     headerCard: {
         backgroundColor: "#fff",
         borderRadius: 16,
         padding: 16,
         borderWidth: 1,
         borderColor: "#e6eef6",
+        marginBottom: 16,
     },
-    row: { flexDirection: "row", justifyContent: "space-between", marginBottom: 12 },
+
+    row: {
+        flexDirection: "row",
+        justifyContent: "space-between",
+        marginBottom: 12,
+    },
     col: { flex: 1 },
     smallLabel: { fontSize: 13, color: "#94a3b8" },
     smallValue: { fontSize: 15, fontWeight: "600", color: "#0f172a" },
     headerButtonRow: { flexDirection: "row", marginTop: 8 },
+
+    bulletRow: {
+        flexDirection: "row",
+        alignItems: "flex-start",
+        marginBottom: 6,
+    },
+    bullet: {
+        color: "#dc7814ff", // yellow bullet
+        fontSize: 20,
+        lineHeight: 20,
+        marginRight: 8,
+        marginTop: 3,
+    },
+    bulletText: {
+        flex: 1,
+        color: "#475569",
+        fontSize: 14,
+        lineHeight: 20,
+    },
+
     reminderBtn: {
         flex: 1,
         backgroundColor: "#e6f6ff",
@@ -289,13 +315,14 @@ const styles = StyleSheet.create({
     },
     reminderText: { color: "#0369a1", fontWeight: "600" },
     refillText: { color: "#fff", fontWeight: "600" },
+
     tabsWrap: {
         flexDirection: "row",
         justifyContent: "space-around",
         backgroundColor: "#f1f5f9",
         borderRadius: 12,
         paddingVertical: 6,
-        marginTop: 16,
+        marginBottom: 16,
     },
     tabActive: {
         backgroundColor: "#fff",
@@ -306,10 +333,42 @@ const styles = StyleSheet.create({
     tabInactive: { paddingHorizontal: 24, paddingVertical: 6 },
     tabActiveText: { color: "#0ea5e9", fontWeight: "600" },
     tabInactiveText: { color: "#94a3b8", fontWeight: "500" },
-    section: { marginTop: 20 },
-    sectionTitle: { fontSize: 16, fontWeight: "600", color: "#0ea5e9", marginBottom: 6 },
-    sectionText: { fontSize: 14, color: "#475569", lineHeight: 20 },
-    footer: { marginTop: 28, marginBottom: 40 },
+
+    /** CARD SECTIONS */
+    card: {
+        backgroundColor: "#fff",
+        borderRadius: 16,
+        padding: 16,
+        marginBottom: 16,
+        borderWidth: 1,
+        borderColor: "#e6eef6",
+    },
+    cardTitle: {
+        fontSize: 16,
+        fontWeight: "600",
+        color: "#0ea5e9",
+        marginBottom: 6,
+    },
+    cardText: {
+        fontSize: 14,
+        color: "#475569",
+        lineHeight: 20,
+    },
+
+    /** FOOTER */
+    footerCard: {
+        backgroundColor: "#fff",
+        borderRadius: 16,
+        padding: 16,
+        borderWidth: 1,
+        borderColor: "#e6eef6",
+        marginTop: 8,
+    },
     footerLabel: { fontSize: 13, color: "#94a3b8" },
-    footerValue: { fontSize: 14, fontWeight: "500", color: "#0f172a", marginBottom: 8 },
+    footerValue: {
+        fontSize: 14,
+        fontWeight: "500",
+        color: "#0f172a",
+        marginBottom: 8,
+    },
 });

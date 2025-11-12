@@ -35,7 +35,7 @@ export default function MedicineDetailsSideEffects() {
     useEffect(() => {
         const fetchSideEffects = async () => {
             setLoading(true);
-            
+
             try {
                 // First get the medicine data
                 const { data: medicineData, error: medicineError } = await supabase
@@ -104,7 +104,7 @@ export default function MedicineDetailsSideEffects() {
         <ScrollView style={styles.container} contentContainerStyle={{ padding: 16 }}>
             {/* Header with back button */}
             <View style={styles.header}>
-                <TouchableOpacity 
+                <TouchableOpacity
                     style={styles.backButton}
                     onPress={() => router.push("/(tabs)/meds")}
                 >
@@ -180,30 +180,50 @@ export default function MedicineDetailsSideEffects() {
             {/* Common side effects */}
             <View style={styles.section}>
                 <Text style={styles.sectionTitle}>Common Side Effects</Text>
+                <Text style={styles.descriptionText}>
+                    These side effects are generally mild and may go away as your body adjusts:
+                </Text>
                 <View style={styles.card}>
-                    <Text style={styles.cardText}>
-                        {ref?.common_side_effects || "No common side effects information available."}
-                    </Text>
-                </View>
-            </View>
-
-            {/* Serious side effects list (highlighted) */}
-            <View style={styles.section}>
-                <Text style={styles.sectionTitleDanger}>Serious Side Effects</Text>
-                <View style={styles.dangerList}>
-                    {ref?.serious_side_effects ? (
-                        <View style={styles.dangerItem}>
-                            <Text style={styles.dangerText}>{ref.serious_side_effects}</Text>
-                        </View>
+                    {ref?.common_side_effects ? (
+                        ref.common_side_effects
+                            .split(",")
+                            .map((item, index) => (
+                                <View key={index} style={styles.bulletRow}>
+                                    <Text style={styles.bulletPoint}>•</Text>
+                                    <Text style={styles.bulletText}>{item.trim()}</Text>
+                                </View>
+                            ))
                     ) : (
-                        <View style={styles.dangerItem}>
-                            <Text style={styles.dangerText}>
-                                No serious side effects information available.
-                            </Text>
-                        </View>
+                        <Text style={styles.cardText}>
+                            No common side effects information available.
+                        </Text>
                     )}
                 </View>
             </View>
+
+            {/* Serious side effects */}
+            <View style={styles.section}>
+                <Text style={styles.sectionTitleDanger}>Serious Side Effects</Text>
+                <Text style={styles.descriptionText}>
+                    Seek medical attention immediately if you experience:
+                </Text>
+                {ref?.serious_side_effects ? (
+                    ref.serious_side_effects
+                        .split(",")
+                        .map((item, index) => (
+                            <View key={index} style={styles.dangerItem}>
+                                <Text style={styles.dangerText}>{item.trim()}</Text>
+                            </View>
+                        ))
+                ) : (
+                    <View style={styles.dangerItem}>
+                        <Text style={styles.dangerText}>
+                            No serious side effects information available.
+                        </Text>
+                    </View>
+                )}
+            </View>
+
         </ScrollView >
     );
 }
@@ -287,6 +307,33 @@ const styles = StyleSheet.create({
         borderColor: "#e6eef6",
         padding: 14,
     },
+
+    descriptionText: {
+        color: "#64748b",
+        fontSize: 13,
+        marginBottom: 6,
+    },
+
+    bulletRow: {
+        flexDirection: "row",
+        alignItems: "flex-start",
+        marginBottom: 4,
+    },
+
+    bulletPoint: {
+        color: "#0ea5e9",
+        fontSize: 16,
+        marginRight: 6,
+        lineHeight: 20,
+    },
+
+    bulletText: {
+        flex: 1,
+        color: "#0f172a",
+        lineHeight: 20,
+    },
+
+
     cardText: { color: "#64748b", lineHeight: 20 },
 
     dangerList: { marginTop: 8 },
