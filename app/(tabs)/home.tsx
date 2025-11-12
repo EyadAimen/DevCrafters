@@ -172,7 +172,8 @@ export default function Home() {
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Quick Actions</Text>
               <View style={styles.quickGrid}>
-                <Pressable style={styles.quickCard}>
+                <Pressable style={styles.quickCard}
+                  onPress={() => router.push("/scan")} >  
                   <Image
                     source={require("../../assets/scanIconBlue.png")}
                     style={styles.quickIcon}
