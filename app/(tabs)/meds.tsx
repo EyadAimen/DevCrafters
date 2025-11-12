@@ -1,6 +1,6 @@
 import React from "react";
-import {useEffect, useMemo, useState} from "react";
-import {FlatList, Image, Pressable, StyleSheet, Text, TextInput, View, Modal, Alert} from "react-native";
+import { useEffect, useMemo, useState } from "react";
+import { FlatList, Image, Pressable, StyleSheet, Text, TextInput, View, Modal, Alert } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
@@ -85,13 +85,13 @@ const ActiveMeds = () => {
 
 			// Map database fields to Medicine type
 			const mappedMedicines: Medicine[] = medicinesData.map((med: any) => {
-				const reminder = reminderMap.get(med.id);
+				const reminder = reminderMap.get(med.medicine_id);
 				return {
-					id: med.id,
+					id: med.medicine_id, // ✅ use medicine_id
 					name: med.medicine_name || '',
 					strength: med.dosage || '',
 					quantity: med.current_stock || 0,
-					lowStockThreshold: 5, // Default low stock threshold
+					lowStockThreshold: 5,
 					frequencyText: med.frequency || '',
 					expiryDate: med.expiry_date || undefined,
 					scheduledTime: reminder?.scheduled_time || undefined,
@@ -168,63 +168,61 @@ const ActiveMeds = () => {
 
 	const renderCard = ({ item }: { item: Medicine }) => {
 		const low = item.quantity <= (item.lowStockThreshold ?? 5);
-		
-		// Format reminder time for display: "Next: 8:00 AM today" or "Next: 8:00 AM tomorrow"
-		const reminderDisplay = item.scheduledTime 
+
+		const reminderDisplay = item.scheduledTime
 			? (() => {
-				// Convert 24-hour format (e.g., "08:00") to 12-hour format (e.g., "8:00 AM")
 				const formatTime = (timeStr: string): string => {
-					if (!timeStr || !/^\d{2}:\d{2}$/.test(timeStr)) {
-						return timeStr;
-					}
+					if (!timeStr || !/^\d{2}:\d{2}$/.test(timeStr)) return timeStr;
 					const [hours, minutes] = timeStr.split(':').map(Number);
 					const period = hours >= 12 ? 'PM' : 'AM';
 					const displayHours = hours % 12 || 12;
 					return `${displayHours}:${minutes.toString().padStart(2, '0')} ${period}`;
 				};
-
-				// TODO: Implement logic to determine if reminder is "today" or "tomorrow"
-				// based on item.days array and current day of week
-				// For now, placeholder logic - replace with actual implementation
-				const isToday = true; // Placeholder: determine based on days array
+				const isToday = true; // TODO: implement actual day logic
 				const timeFormatted = formatTime(item.scheduledTime);
 				return `Next: ${timeFormatted} ${isToday ? 'today' : 'tomorrow'}`;
 			})()
 			: "";
 
 		return (
-			<View style={styles.card}>
-				<View style={styles.cardRow}>
-					<View style={styles.iconSquare}>
-						<Image source={require("../../assets/medicineIcon.png")} style={styles.iconImg} resizeMode="contain" />
-					</View>
-					<View style={styles.cardContent}>
-						<View style={styles.cardHeader}>
-							<Text style={styles.cardTitle}>{item.name}</Text>
-							{low ? (
-								<View style={styles.lowBadge}><Text style={styles.lowBadgeText}>Low Stock</Text></View>
-							) : null}
+
+			<Pressable onPress={() => router.push(`/(tabs)/medicine/${item.id}`)}
+				style={({ pressed }) => [{ opacity: pressed ? 0.7 : 1 }]}>
+				<View style={styles.card}>
+					<View style={styles.cardRow}>
+						<View style={styles.iconSquare}>
+							<Image source={require("../../assets/medicineIcon.png")} style={styles.iconImg} resizeMode="contain" />
 						</View>
-						<Text style={styles.cardSub}>{item.strength}</Text>
-						<View style={styles.metaRow}>
-							<View style={styles.frequencyRow}>
-								<Image source={require("../../assets/timeIcon.png")} style={styles.timeIcon} resizeMode="contain" />
-								<Text style={styles.metaText}>{item.frequencyText}</Text>
+						<View style={styles.cardContent}>
+							<View style={styles.cardHeader}>
+								<Text style={styles.cardTitle}>{item.name}</Text>
+								{low && (
+									<View style={styles.lowBadge}>
+										<Text style={styles.lowBadgeText}>Low Stock</Text>
+									</View>
+								)}
 							</View>
+							<Text style={styles.cardSub}>{item.strength}</Text>
+							<View style={styles.metaRow}>
+								<View style={styles.frequencyRow}>
+									<Image source={require("../../assets/timeIcon.png")} style={styles.timeIcon} resizeMode="contain" />
+									<Text style={styles.metaText}>{item.frequencyText}</Text>
+								</View>
+							</View>
+							{reminderDisplay && (
+								<View style={styles.reminderRow}>
+									<Image source={require("../../assets/reminderIcon.png")} style={styles.reminderIcon} resizeMode="contain" />
+									<Text style={styles.reminderText}>{reminderDisplay}</Text>
+								</View>
+							)}
+							<Text style={[styles.stockText, low ? styles.stockLow : undefined]}>{item.quantity} pills left</Text>
 						</View>
-						{/* Reminder Time - retrieved from reminder table using scheduled_time and days */}
-						{reminderDisplay ? (
-							<View style={styles.reminderRow}>
-								<Image source={require("../../assets/reminderIcon.png")} style={styles.reminderIcon} resizeMode="contain" />
-								<Text style={styles.reminderText}>{reminderDisplay}</Text>
-							</View>
-						) : null}
-						<Text style={[styles.stockText, low ? styles.stockLow : undefined]}>{item.quantity} pills left</Text>
 					</View>
 				</View>
-			</View>
+			</Pressable>
 		);
 	};
+
 
 	const ListHeaderComponent = () => (
 		<>
@@ -264,7 +262,7 @@ const ActiveMeds = () => {
 
 	return (
 		<SafeAreaView style={styles.page}>
-			<LinearGradient style={styles.gradient} locations={[0,0.5,1]} colors={["#f8fafc","rgba(239, 246, 255, 0.3)","rgba(236, 254, 255, 0.2)"]}>
+			<LinearGradient style={styles.gradient} locations={[0, 0.5, 1]} colors={["#f8fafc", "rgba(239, 246, 255, 0.3)", "rgba(236, 254, 255, 0.2)"]}>
 				{loading ? (
 					<View style={styles.container}>
 						<ListHeaderComponent />
