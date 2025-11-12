@@ -1,5 +1,5 @@
 import * as React from "react";
-import {useState} from "react";
+import { useState } from "react";
 import {
 	ScrollView,
 	StyleSheet,
@@ -73,13 +73,18 @@ const AddMedicine = () => {
 				return;
 			}
 
-			// Prepare data for Supabase using actual database schema
-			// Ensure dosage has "mg" suffix - formData.dosage should only contain numbers
+			// Ensure dosage has "mg" suffix
 			let dosageValue = formData.dosage.trim().replace(/[^0-9]/g, '');
-			if (dosageValue) {
-				dosageValue = dosageValue + "mg";
-			}
-			
+			if (dosageValue) dosageValue = dosageValue + "mg";
+
+			// 🧩 Try to find matching reference record
+			const { data: reference } = await supabase
+				.from("medicine_reference")
+				.select("drug_id")
+				.ilike("medicine_name", formData.name.trim())
+				.maybeSingle();
+
+			// Prepare medicine data (only once!)
 			const medicineData: any = {
 				user_id: user.id,
 				medicine_name: formData.name.trim(),
@@ -88,42 +93,42 @@ const AddMedicine = () => {
 				current_stock: parseInt(formData.stock, 10),
 			};
 
-			// Add optional fields
-			if (formData.genericName.trim()) {
-				medicineData.generic_name = formData.genericName.trim();
-			}
-			if (formData.specialInstructions.trim()) {
-				medicineData.special_instructions = formData.specialInstructions.trim();
-			}
-			// Only add expiry_date if it's provided and properly formatted
-			// Skip expiry_date if validation fails (it's optional)
-			if (formData.expiryDate.trim()) {
-				medicineData.expiry_date = formData.expiryDate.trim();
+			// Optional fields
+			if (formData.genericName.trim()) medicineData.generic_name = formData.genericName.trim();
+			if (formData.specialInstructions.trim()) medicineData.special_instructions = formData.specialInstructions.trim();
+			if (formData.expiryDate.trim()) medicineData.expiry_date = formData.expiryDate.trim();
+
+			// ✅ If reference exists, attach it
+			if (reference) {
+				medicineData.reference_id = reference.drug_id;
+				console.log("Linked to reference:", reference.drug_id);
+			} else {
+				console.log("No reference found for:", formData.name.trim());
 			}
 
-			const { error } = await supabase
-				.from('medicines')
-				.insert([medicineData]);
+			// Insert into Supabase
+			const { error } = await supabase.from("medicines").insert([medicineData]);
 
 			if (error) {
-				console.error('Error adding medicine:', error);
+				console.error("Error adding medicine:", error);
 				Alert.alert("Error", error.message || "Failed to add medication");
 			} else {
 				Alert.alert("Success", "Medication added successfully!", [
-					{
-						text: "OK",
-						onPress: () => router.back()
-					}
+					{ text: "OK", onPress: () => router.back() },
 				]);
 			}
 		} catch (error: any) {
-			console.error('Error:', error);
-			// Handle network errors
-			if (error.message?.includes('Network request failed') || 
-				error.message?.includes('fetch') || 
-				error.code === 'ECONNABORTED' ||
-				error.name === 'TypeError') {
-				Alert.alert("Network Error", "Unable to connect to the server. Please check your internet connection and try again.");
+			console.error("Error:", error);
+			if (
+				error.message?.includes("Network request failed") ||
+				error.message?.includes("fetch") ||
+				error.code === "ECONNABORTED" ||
+				error.name === "TypeError"
+			) {
+				Alert.alert(
+					"Network Error",
+					"Unable to connect to the server. Please check your internet connection and try again."
+				);
 			} else {
 				Alert.alert("Error", "Something went wrong. Please try again.");
 			}
@@ -131,6 +136,7 @@ const AddMedicine = () => {
 			setLoading(false);
 		}
 	};
+
 
 	return (
 		<SafeAreaView style={styles.container}>
@@ -155,10 +161,10 @@ const AddMedicine = () => {
 
 						{/* Title Section */}
 						<View style={styles.titleSection}>
-							<Image 
-								source={require("../../assets/medicineIcon.png")} 
-								style={styles.iconImg} 
-								resizeMode="contain" 
+							<Image
+								source={require("../../assets/medicineIcon.png")}
+								style={styles.iconImg}
+								resizeMode="contain"
 							/>
 							<View style={styles.titleContainer}>
 								<Text style={styles.title}>Add Medication</Text>
@@ -170,152 +176,152 @@ const AddMedicine = () => {
 
 						{/* Form */}
 						<View style={styles.form}>
-						{/* Medicine Name */}
-						<View style={styles.fieldContainer}>
-							<View style={styles.labelRow}>
-								<Text style={styles.label}>Medicine Name</Text>
-								<Text style={styles.required}>*</Text>
-							</View>
-							<TextInput
-								style={styles.input}
-								placeholder="e.g., Lisinopril"
-								placeholderTextColor="#64748b"
-								value={formData.name}
-								onChangeText={(value) => handleInputChange("name", value)}
-							/>
-						</View>
-
-						{/* Generic Name */}
-						<View style={styles.fieldContainer}>
-							<Text style={styles.label}>Generic Name (Optional)</Text>
-							<TextInput
-								style={styles.input}
-								placeholder="e.g., Lisinopril"
-								placeholderTextColor="#64748b"
-								value={formData.genericName}
-								onChangeText={(value) => handleInputChange("genericName", value)}
-							/>
-						</View>
-
-						{/* Dosage */}
-						<View style={styles.fieldContainer}>
-							<View style={styles.labelRow}>
-								<Text style={styles.label}>Dosage</Text>
-								<Text style={styles.required}>*</Text>
-							</View>
-							<View style={styles.dosageInputContainer}>
+							{/* Medicine Name */}
+							<View style={styles.fieldContainer}>
+								<View style={styles.labelRow}>
+									<Text style={styles.label}>Medicine Name</Text>
+									<Text style={styles.required}>*</Text>
+								</View>
 								<TextInput
-									style={styles.dosageInput}
-									placeholder="e.g., 10"
+									style={styles.input}
+									placeholder="e.g., Lisinopril"
 									placeholderTextColor="#64748b"
-									value={formData.dosage.replace(/mg$/i, '').trim()}
-									onChangeText={(value) => {
-										// Only allow numeric input
-										const numericValue = value.replace(/[^0-9]/g, '');
-										handleInputChange("dosage", numericValue);
-									}}
+									value={formData.name}
+									onChangeText={(value) => handleInputChange("name", value)}
+								/>
+							</View>
+
+							{/* Generic Name */}
+							<View style={styles.fieldContainer}>
+								<Text style={styles.label}>Generic Name (Optional)</Text>
+								<TextInput
+									style={styles.input}
+									placeholder="e.g., Lisinopril"
+									placeholderTextColor="#64748b"
+									value={formData.genericName}
+									onChangeText={(value) => handleInputChange("genericName", value)}
+								/>
+							</View>
+
+							{/* Dosage */}
+							<View style={styles.fieldContainer}>
+								<View style={styles.labelRow}>
+									<Text style={styles.label}>Dosage</Text>
+									<Text style={styles.required}>*</Text>
+								</View>
+								<View style={styles.dosageInputContainer}>
+									<TextInput
+										style={styles.dosageInput}
+										placeholder="e.g., 10"
+										placeholderTextColor="#64748b"
+										value={formData.dosage.replace(/mg$/i, '').trim()}
+										onChangeText={(value) => {
+											// Only allow numeric input
+											const numericValue = value.replace(/[^0-9]/g, '');
+											handleInputChange("dosage", numericValue);
+										}}
+										keyboardType="numeric"
+									/>
+									<Text style={styles.dosageUnit}>mg</Text>
+								</View>
+							</View>
+
+							{/* Frequency */}
+							<View style={styles.fieldContainer}>
+								<View style={styles.labelRow}>
+									<Text style={styles.label}>Frequency</Text>
+									<Text style={styles.required}>*</Text>
+								</View>
+								<Pressable
+									style={styles.selectInput}
+									onPress={() => setShowFrequencyPicker(!showFrequencyPicker)}
+								>
+									<Text style={[styles.selectText, !formData.frequency && styles.placeholderText]}>
+										{formData.frequency || "Select frequency"}
+									</Text>
+									<Text style={styles.selectIcon}>▼</Text>
+								</Pressable>
+								{showFrequencyPicker && (
+									<View style={styles.pickerContainer}>
+										{frequencyOptions.map((option, index) => (
+											<Pressable
+												key={`${option}-${index}`}
+												style={styles.pickerOption}
+												onPress={() => {
+													handleInputChange("frequency", option);
+													setShowFrequencyPicker(false);
+												}}
+											>
+												<Text style={styles.pickerOptionText}>{option}</Text>
+											</Pressable>
+										))}
+									</View>
+								)}
+							</View>
+
+							{/* Current Stock */}
+							<View style={styles.fieldContainer}>
+								<View style={styles.labelRow}>
+									<Text style={styles.label}>Current Stock (pills/doses)</Text>
+									<Text style={styles.required}>*</Text>
+								</View>
+								<TextInput
+									style={styles.input}
+									placeholder="e.g., 30"
+									placeholderTextColor="#64748b"
+									value={formData.stock}
+									onChangeText={(value) => handleInputChange("stock", value)}
 									keyboardType="numeric"
 								/>
-								<Text style={styles.dosageUnit}>mg</Text>
+							</View>
+
+							{/* Expiry Date */}
+							<View style={styles.fieldContainer}>
+								<Text style={styles.label}>Expiry Date</Text>
+								<TextInput
+									style={styles.input}
+									placeholder="YYYY-MM-DD"
+									placeholderTextColor="#64748b"
+									value={formData.expiryDate}
+									onChangeText={(value) => handleInputChange("expiryDate", value)}
+								/>
+								<Text style={styles.hint}>Format: YYYY-MM-DD (e.g., 2025-12-31)</Text>
+							</View>
+
+							{/* Special Instructions */}
+							<View style={styles.fieldContainer}>
+								<Text style={styles.label}>Special Instructions (Optional)</Text>
+								<TextInput
+									style={styles.input}
+									placeholder="e.g., Take with food"
+									placeholderTextColor="#64748b"
+									value={formData.specialInstructions}
+									onChangeText={(value) => handleInputChange("specialInstructions", value)}
+									multiline
+									numberOfLines={3}
+								/>
+							</View>
+
+							{/* Buttons */}
+							<View style={styles.buttonRow}>
+								<Pressable
+									style={[styles.button, styles.cancelButton]}
+									onPress={() => router.back()}
+									disabled={loading}
+								>
+									<Text style={styles.cancelButtonText}>Cancel</Text>
+								</Pressable>
+								<Pressable
+									style={[styles.button, styles.submitButton]}
+									onPress={handleSubmit}
+									disabled={loading}
+								>
+									<Text style={styles.submitButtonText}>
+										{loading ? "Adding..." : "Add Medication"}
+									</Text>
+								</Pressable>
 							</View>
 						</View>
-
-						{/* Frequency */}
-						<View style={styles.fieldContainer}>
-							<View style={styles.labelRow}>
-								<Text style={styles.label}>Frequency</Text>
-								<Text style={styles.required}>*</Text>
-							</View>
-							<Pressable
-								style={styles.selectInput}
-								onPress={() => setShowFrequencyPicker(!showFrequencyPicker)}
-							>
-								<Text style={[styles.selectText, !formData.frequency && styles.placeholderText]}>
-									{formData.frequency || "Select frequency"}
-								</Text>
-								<Text style={styles.selectIcon}>▼</Text>
-							</Pressable>
-							{showFrequencyPicker && (
-								<View style={styles.pickerContainer}>
-									{frequencyOptions.map((option, index) => (
-										<Pressable
-											key={`${option}-${index}`}
-											style={styles.pickerOption}
-											onPress={() => {
-												handleInputChange("frequency", option);
-												setShowFrequencyPicker(false);
-											}}
-										>
-											<Text style={styles.pickerOptionText}>{option}</Text>
-										</Pressable>
-									))}
-								</View>
-							)}
-						</View>
-
-						{/* Current Stock */}
-						<View style={styles.fieldContainer}>
-							<View style={styles.labelRow}>
-								<Text style={styles.label}>Current Stock (pills/doses)</Text>
-								<Text style={styles.required}>*</Text>
-							</View>
-							<TextInput
-								style={styles.input}
-								placeholder="e.g., 30"
-								placeholderTextColor="#64748b"
-								value={formData.stock}
-								onChangeText={(value) => handleInputChange("stock", value)}
-								keyboardType="numeric"
-							/>
-						</View>
-
-						{/* Expiry Date */}
-						<View style={styles.fieldContainer}>
-							<Text style={styles.label}>Expiry Date</Text>
-							<TextInput
-								style={styles.input}
-								placeholder="YYYY-MM-DD"
-								placeholderTextColor="#64748b"
-								value={formData.expiryDate}
-								onChangeText={(value) => handleInputChange("expiryDate", value)}
-							/>
-							<Text style={styles.hint}>Format: YYYY-MM-DD (e.g., 2025-12-31)</Text>
-						</View>
-
-						{/* Special Instructions */}
-						<View style={styles.fieldContainer}>
-							<Text style={styles.label}>Special Instructions (Optional)</Text>
-							<TextInput
-								style={styles.input}
-								placeholder="e.g., Take with food"
-								placeholderTextColor="#64748b"
-								value={formData.specialInstructions}
-								onChangeText={(value) => handleInputChange("specialInstructions", value)}
-								multiline
-								numberOfLines={3}
-							/>
-						</View>
-
-						{/* Buttons */}
-						<View style={styles.buttonRow}>
-							<Pressable
-								style={[styles.button, styles.cancelButton]}
-								onPress={() => router.back()}
-								disabled={loading}
-							>
-								<Text style={styles.cancelButtonText}>Cancel</Text>
-							</Pressable>
-							<Pressable
-								style={[styles.button, styles.submitButton]}
-								onPress={handleSubmit}
-								disabled={loading}
-							>
-								<Text style={styles.submitButtonText}>
-									{loading ? "Adding..." : "Add Medication"}
-								</Text>
-							</Pressable>
-						</View>
-					</View>
 					</View>
 				</ScrollView>
 			</LinearGradient>
