@@ -30,7 +30,7 @@ export default function CreateNewPassword() {
       Alert.alert(
         "Error",
         "Unable to verify your reset request. Please request a new reset link.",
-        [{ text: "OK", onPress: () => router.push("/send-reset-link") }]
+        [{ text: "OK", onPress: () => router.push("/forgot-password") }]
       );
     }
   };
@@ -57,7 +57,7 @@ export default function CreateNewPassword() {
           Alert.alert(
             "Session Expired",
             "Your reset link has expired. Please request a new one.",
-            [{ text: "OK", onPress: () => router.push("/send-reset-link") }]
+            [{ text: "OK", onPress: () => router.push("/forgot-password") }]
           );
         } else {
           Alert.alert("Error", error.message);

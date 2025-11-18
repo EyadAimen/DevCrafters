@@ -26,7 +26,7 @@ export default function ForgotPassword() {
 
     setLoading(true);
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: 'exp://192.168.0.10:8081/--/send-reset-link',
+      redirectTo: 'exp://192.168.0.10:8081/--/forgot-password',
     });
 
     if (error) {

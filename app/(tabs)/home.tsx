@@ -184,7 +184,7 @@ export default function Home() {
                   </Text>
                 </Pressable>
 
-                <Pressable style={styles.quickCard}>
+                <Pressable style={styles.quickCard} onPress={() => router.push("/reminders")}>
                   <Image
                     source={require("../../assets/notiIconPurple.png")}
                     style={styles.quickIcon}
