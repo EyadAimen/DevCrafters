@@ -371,7 +371,10 @@ const extractMedicineInfo = useCallback((ocrText: string): MedicineInfo => {
     }
 
     setTimeout(() => {
-      router.replace("/AfterAnalysingMedicine");
+    router.replace({
+        pathname: "/AfterAnalysingMedicine",
+        params: { medicineName: medicineInfo.name }
+    });
     }, 1500);
 
   } catch (error) {
