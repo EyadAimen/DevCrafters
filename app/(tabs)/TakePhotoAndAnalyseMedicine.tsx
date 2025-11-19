@@ -25,6 +25,7 @@ const TakePhotoAndAnalyseMedicine = () => {
   const [showCamera, setShowCamera] = useState(params.fromUpload !== "true");
   const [facing, setFacing] = useState<CameraType>('back');
   const [permission, requestPermission] = useCameraPermissions();
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const cameraRef = useRef<CameraView>(null);
   const router = useRouter();
   const { width, height } = useWindowDimensions();
@@ -33,6 +34,22 @@ const TakePhotoAndAnalyseMedicine = () => {
     data: any;
     error: Error | null;
   };
+
+  type OCRResult = {
+    success: boolean;
+    text: string;
+    error?: string;
+  };
+
+  type MedicineInfo = {
+  name: string | null;
+  dosage: string | null;
+  confidence: 'high' | 'medium' | 'low';
+};
+
+  // OCR.space API configuration
+  const OCR_API_KEY = 'K81090469888957'; // max 25000 requests/month (Free tier)
+  const OCR_API_URL = 'https://api.ocr.space/parse/image';
 
   const decodeBase64ToUint8Array = (base64: string): Uint8Array => {
     const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=";
@@ -66,6 +83,185 @@ const TakePhotoAndAnalyseMedicine = () => {
     return bytes;
   };
 
+  // OCR Analysis Function
+  const analyzeImageWithOCR = useCallback(async (imageUri: string, base64Data?: string): Promise<OCRResult> => {
+    try {
+      setIsAnalyzing(true);
+      
+      let base64String = base64Data;
+      if (!base64String) {
+        base64String = await FileSystem.readAsStringAsync(imageUri, { 
+          encoding: FileSystem.EncodingType.Base64 
+        });
+      }
+
+      // Prepare form data for OCR.space API
+      const formData = new FormData();
+      formData.append('base64Image', `data:image/jpeg;base64,${base64String}`);
+      formData.append('apikey', OCR_API_KEY);
+      formData.append('language', 'eng');
+      formData.append('isOverlayRequired', 'false');
+      formData.append('OCREngine', '1');
+      formData.append('scale', 'true');
+      formData.append('isTable', 'false');
+      
+
+      console.log("🔍 Sending image to OCR API...");
+
+      const response = await fetch(OCR_API_URL, {
+        method: 'POST',
+        body: formData,
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+
+      const result = await response.json();
+
+      if (result.IsErroredOnProcessing) {
+        console.error("❌ OCR API Error:", result.ErrorMessage);
+        return {
+          success: false,
+          text: '',
+          error: result.ErrorMessage || 'OCR processing failed'
+        };
+      }
+
+      if (result.ParsedResults && result.ParsedResults.length > 0) {
+        const extractedText = result.ParsedResults[0].ParsedText;
+        console.log("✅ OCR Analysis Successful");
+        console.log("📝 Extracted Text:", extractedText.substring(0, 200) + "...");
+        
+        return {
+          success: true,
+          text: extractedText
+        };
+      } else {
+        console.error("❌ No OCR results found");
+        return {
+          success: false,
+          text: '',
+          error: 'No text detected in image'
+        };
+      }
+    } catch (error) {
+      console.error("❌ OCR Analysis Error:", error);
+      return {
+        success: false,
+        text: '',
+        error: error instanceof Error ? error.message : 'Unknown OCR error'
+      };
+    } finally {
+      setIsAnalyzing(false);
+    }
+  }, []);
+
+const extractMedicineInfo = useCallback((ocrText: string): MedicineInfo => {
+  if (!ocrText || ocrText.trim().length === 0) {
+    return { name: null, dosage: null, confidence: 'low' };
+  }
+
+  console.log("🔍 Analyzing OCR text for medicine information...");
+  
+  const text = ocrText.toLowerCase();
+  let name: string | null = null;
+  let dosage: string | null = null;
+  let confidence: 'high' | 'medium' | 'low' = 'low';
+
+  // Common medicine name patterns
+  const medicineNamePatterns = [
+    // Brand names (common pain relievers, antibiotics, etc.)
+    /\b(?:paracetamol|acetaminophen|ibuprofen|aspirin|amoxicillin|penicillin|vitamin c|omeprazole|atorvastatin|metformin|lisinopril|levothyroxine)\b/gi,
+    // Generic names with common prefixes/suffixes
+    /\b(?:[a-z]*(?:pril|mycin|cycline|oxacin|pram|azole|statin|olol|dipine|tidine|pramine|oxetine))\b/gi,
+    // Words that often appear in medicine names
+    /\b(?:advil|tylenol|motrin|nexium|lipitor|synthroid|ventolin|prozac|xanax|valium|cipro|zithromax|augmentin)\b/gi
+  ];
+
+  // Dosage patterns
+  const dosagePatterns = [
+    // mg patterns
+    /\b(\d+(?:\.\d+)?)\s*mg\b/gi,
+    /\b(\d+)\s*milligrams?\b/gi,
+    // mcg patterns
+    /\b(\d+(?:\.\d+)?)\s*mcg\b/gi,
+    /\b(\d+)\s*micrograms?\b/gi,
+    // g patterns
+    /\b(\d+(?:\.\d+)?)\s*g\b/gi,
+    /\b(\d+)\s*grams?\b/gi,
+    // IU patterns (for vitamins)
+    /\b(\d+(?:,\d+)*)\s*IU\b/gi,
+    // Percentage patterns
+    /\b(\d+(?:\.\d+)?)\s*%\b/gi,
+    // Tablet/capsule patterns
+    /\b(\d+(?:\.\d+)?)\s*tablets?\b/gi,
+    /\b(\d+(?:\.\d+)?)\s*capsules?\b/gi,
+    // Combined dosage patterns (e.g., 500mg/5mL)
+    /\b(\d+(?:\.\d+)?\s*mg\s*\/\s*\d+(?:\.\d+)?\s*ml)\b/gi,
+    // Strength patterns
+    /\b(\d+(?:\.\d+)?)\s*(?:strength|potency|power)\b/gi
+  ];
+
+  // Extract medicine name
+  for (const pattern of medicineNamePatterns) {
+    const matches = text.match(pattern);
+    if (matches && matches.length > 0) {
+      // Take the first match and capitalize it properly
+      name = matches[0].replace(/\b\w/g, l => l.toUpperCase());
+      confidence = confidence === 'low' ? 'medium' : confidence;
+      break;
+    }
+  }
+
+  // If no common names found, look for capitalized words that might be medicine names
+  if (!name) {
+    const capitalizedWords = ocrText.match(/\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b/g);
+    if (capitalizedWords) {
+      // Filter out common non-medicine words and take the most likely candidate
+      const commonNonMedicine = new Set([
+        'tablet', 'capsule', 'injection', 'solution', 'suspension', 'cream', 'ointment',
+        'powder', 'syrup', 'drops', 'spray', 'inhaler', 'patch', 'suppository',
+        'bottle', 'package', 'container', 'label', 'instructions', 'warning',
+        'caution', 'storage', 'expiry', 'manufacturer', 'distributor', 'limited',
+        'pharmaceuticals', 'healthcare', 'medical', 'prescription'
+      ]);
+
+      const potentialNames = capitalizedWords.filter(word => 
+        word.split(' ').length <= 3 && // Avoid very long phrases
+        !commonNonMedicine.has(word.toLowerCase()) &&
+        word.length > 3 // Avoid very short words
+      );
+
+      if (potentialNames.length > 0) {
+        name = potentialNames[0];
+        confidence = 'medium';
+      }
+    }
+  }
+
+  // Extract dosage
+  for (const pattern of dosagePatterns) {
+    const matches = text.match(pattern);
+    if (matches && matches.length > 0) {
+      dosage = matches[0];
+      confidence = confidence === 'low' ? 'medium' : 'high';
+      break;
+    }
+  }
+
+  // Look for dosage in common formats if not found with patterns
+  if (!dosage) {
+    const numberUnits = text.match(/\b(\d+(?:\.\d+)?)\s*(mg|mcg|g|ml|tablet|capsule|iu|%)\b/gi);
+    if (numberUnits && numberUnits.length > 0) {
+      dosage = numberUnits[0];
+      confidence = confidence === 'low' ? 'medium' : confidence;
+    }
+  }
+
+  console.log("💊 Extracted Medicine Info:", { name, dosage, confidence });
+  return { name, dosage, confidence };
+}, []);
+
   const uploadImageToSupabase = useCallback(async (uri: string, fileName: string, base64Data?: string): Promise<UploadResult> => {
     try {
       const b64 = base64Data ?? await FileSystem.readAsStringAsync(uri, { encoding: "base64" as any });
@@ -90,6 +286,103 @@ const TakePhotoAndAnalyseMedicine = () => {
     }
   }, []);
 
+  const processAndSaveImage = useCallback(async (imageUri: string, base64Data?: string, source: 'camera' | 'upload' = 'camera') => {
+    try {
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError || !user) {
+        Alert.alert("Error", "User not logged in");
+        return;
+      }
+
+      const fileName = `${user.id}-${Date.now()}.jpg`;
+      
+      console.log(`⬆️ Uploading ${source} photo to medicine-images bucket...`);
+      const { data: uploadData, error: uploadError } = await uploadImageToSupabase(imageUri, fileName, base64Data);
+
+      if (uploadError) {
+        console.error("❌ Storage upload error:", uploadError);
+        Alert.alert("Upload failed", uploadError.message);
+        return;
+      }
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('medicine-images')
+        .getPublicUrl(fileName);
+      
+      console.log("🌐 Public URL:", publicUrl);
+
+      // Perform OCR analysis
+      console.log("🔍 Starting OCR analysis...");
+      const ocrResult = await analyzeImageWithOCR(imageUri, base64Data);
+
+       // Extract medicine information from OCR text
+    let medicineInfo: MedicineInfo = { name: null, dosage: null, confidence: 'low' };
+    if (ocrResult.success && ocrResult.text) {
+      medicineInfo = extractMedicineInfo(ocrResult.text);
+    }
+
+    console.log("💾 Saving photo and medicine info to database...");
+    const { data: insertData, error: insertError } = await supabase
+      .from('user_captured_images_scan')
+      .insert({
+        user_id: user.id,
+        image_url: publicUrl,
+        medicine_name: medicineInfo.name,
+        medicine_dosage: medicineInfo.dosage,
+        confidence_level: medicineInfo.confidence
+      })
+      .select();
+
+    if (insertError) {
+      console.error("❌ Database insert error:", insertError);
+      Alert.alert("Database Error", insertError.message);
+      return;
+    }
+
+    // Create appropriate alert message based on extraction results
+    if (ocrResult.success) {
+      if (medicineInfo.name && medicineInfo.dosage) {
+        Alert.alert(
+          "Analysis Complete", 
+          `Medicine identified: ${medicineInfo.name}\nDosage: ${medicineInfo.dosage}\n\nFull label text has been extracted and saved.`
+        );
+      } else if (medicineInfo.name) {
+        Alert.alert(
+          "Analysis Complete", 
+          `Medicine identified: ${medicineInfo.name}\n\nDosage information not found in the label. Full label text has been extracted and saved.`
+        );
+      } else if (medicineInfo.dosage) {
+        Alert.alert(
+          "Analysis Complete", 
+          `Dosage identified: ${medicineInfo.dosage}\n\nMedicine name not clearly identified. Full label text has been extracted and saved.`
+        );
+      } else {
+        Alert.alert(
+          "Analysis Complete", 
+          "Medicine package scanned successfully! Text extracted but specific medicine name and dosage couldn't be identified automatically."
+        );
+      }
+    } else {
+      console.log("⚠️ Photo uploaded but OCR analysis failed:", ocrResult.error);
+      Alert.alert(
+        "Upload Complete", 
+        "Photo saved but we couldn't read text from the image. Please ensure the package label is clear and try again."
+      );
+    }
+
+    setTimeout(() => {
+    router.replace({
+        pathname: "/AfterAnalysingMedicine",
+        params: { medicineName: medicineInfo.name }
+    });
+    }, 1500);
+
+  } catch (error) {
+    console.error("❌ Error in processAndSaveImage:", error);
+    Alert.alert("Error", "Failed to process image. Please try again.");
+  }
+  }, [router, uploadImageToSupabase, analyzeImageWithOCR]);
+
   const takePicture = useCallback(async () => {
     if (!cameraRef.current) {
       return;
@@ -97,8 +390,9 @@ const TakePhotoAndAnalyseMedicine = () => {
 
     try {
       const photo = await cameraRef.current.takePictureAsync({
-        quality: 0.8,
+        quality: 0.5,
         base64: true,
+        exif: false,
       });
 
       if (photo) {
@@ -106,56 +400,14 @@ const TakePhotoAndAnalyseMedicine = () => {
         setShowCamera(false);
         console.log("✅ Photo taken successfully:", photo.uri);
 
-        const { data: { user }, error: userError } = await supabase.auth.getUser();
-        if (userError || !user) {
-          Alert.alert("Error", "User not logged in");
-          return;
-        }
-
-        const fileName = `${user.id}-${Date.now()}.jpg`;
-        
-        console.log("⬆️ Uploading camera photo to medicine-images bucket...");
-        const { data: uploadData, error: uploadError } = await uploadImageToSupabase(photo.uri, fileName, (photo as any).base64);
-
-        if (uploadError) {
-          console.error("❌ Storage upload error:", uploadError);
-          Alert.alert("Upload failed", uploadError.message);
-          return;
-        }
-
-        const { data: { publicUrl } } = supabase.storage
-          .from('medicine-images')
-          .getPublicUrl(fileName);
-        
-        console.log("🌐 Public URL:", publicUrl);
-
-        console.log("💾 Saving camera photo to database...");
-        const { data: insertData, error: insertError } = await supabase
-          .from('user_captured_images_scan')
-          .insert({
-            user_id: user.id,
-            image_url: publicUrl
-          })
-          .select();
-
-        if (insertError) {
-          console.error("❌ Database insert error:", insertError);
-          Alert.alert("Database Error", insertError.message);
-          return;
-        }
-
-        console.log("✅ SUCCESS! Camera photo uploaded and saved to database!");
-        Alert.alert("Success", "Photo captured and saved successfully!");
-
-        setTimeout(() => {
-          router.replace("/AfterAnalysingMedicine");
-        }, 1000);
+        // Process the image with OCR
+        await processAndSaveImage(photo.uri, (photo as any).base64, 'camera');
       }
     } catch (error) {
       console.error("Error taking picture:", error);
       Alert.alert("Error", "Failed to take photo. Please try again.");
     }
-  }, [router]);
+  }, [processAndSaveImage]);
 
   const toggleCameraFacing = useCallback(() => {
     setFacing(current => (current === 'back' ? 'front' : 'back'));
@@ -172,7 +424,7 @@ const TakePhotoAndAnalyseMedicine = () => {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
-        quality: 0.8,
+        quality: 0.5,
         aspect: [4, 3],
         base64: true,
       });
@@ -183,50 +435,8 @@ const TakePhotoAndAnalyseMedicine = () => {
         setShowCamera(false);
         console.log("✅ Photo selected for upload:", photoUri);
 
-        const { data: { user }, error: userError } = await supabase.auth.getUser();
-        if (userError || !user) {
-          Alert.alert("Error", "User not logged in");
-          return;
-        }
-
-        const fileName = `${user.id}-${Date.now()}.jpg`;
-        
-        console.log("⬆️ Uploading selected photo to medicine-images bucket...");
-        const { data: uploadData, error: uploadError } = await uploadImageToSupabase(photoUri, fileName, result.assets[0].base64 as unknown as string | undefined);
-
-        if (uploadError) {
-          console.error("❌ Storage upload error:", uploadError);
-          Alert.alert("Upload failed", uploadError.message);
-          return;
-        }
-
-        const { data: { publicUrl } } = supabase.storage
-          .from('medicine-images')
-          .getPublicUrl(fileName);
-        
-        console.log("🌐 Public URL:", publicUrl);
-
-        console.log("💾 Saving uploaded photo to database...");
-        const { data: insertData, error: insertError } = await supabase
-          .from('user_captured_images_scan')
-          .insert({
-            user_id: user.id,
-            image_url: publicUrl
-          })
-          .select();
-
-        if (insertError) {
-          console.error("❌ Database insert error:", insertError);
-          Alert.alert("Database Error", insertError.message);
-          return;
-        }
-
-        console.log("✅ SUCCESS! Uploaded photo saved to database!");
-        Alert.alert("Success", "Photo uploaded successfully!");
-        
-        setTimeout(() => {
-          router.replace("/AfterAnalysingMedicine");
-        }, 1000);
+        // Process the image with OCR
+        await processAndSaveImage(photoUri, result.assets[0].base64 as unknown as string | undefined, 'upload');
       } else {
         console.log("Image selection was cancelled");
       }
@@ -234,7 +444,7 @@ const TakePhotoAndAnalyseMedicine = () => {
       console.error("Error opening image library:", error);
       Alert.alert("Error", "Failed to open image library. Please try again.");
     }
-  }, [router]);
+  }, [processAndSaveImage]);
 
   React.useEffect(() => {
     if (!permission && showCamera) {
@@ -351,13 +561,23 @@ const TakePhotoAndAnalyseMedicine = () => {
 
           <View style={[styles.card, dynamicStyles.card]}>
             <View style={styles.loadingContainer}>
-              <View style={styles.spinner} />
+              <View style={[
+                styles.spinner, 
+                isAnalyzing && { borderTopColor: "transparent" }
+              ]} />
               <Text style={[
                 styles.analyzingText,
                 isLargeScreen && { fontSize: 18 }
               ]}>
-                Analyzing medicine...
+                {isAnalyzing ? "Analyzing medicine with OCR..." : "Ready to scan..."}
               </Text>
+              {image && (
+                <Image 
+                  source={{ uri: image }} 
+                  style={styles.previewImage}
+                  resizeMode="contain"
+                />
+              )}
             </View>
           </View>
 
@@ -368,9 +588,11 @@ const TakePhotoAndAnalyseMedicine = () => {
             <Pressable
               style={[
                 styles.primaryButton,
-                isLargeScreen && styles.buttonLarge
+                isLargeScreen && styles.buttonLarge,
+                isAnalyzing && styles.buttonDisabled
               ]}
               onPress={() => setShowCamera(true)}
+              disabled={isAnalyzing}
             >
               <Image
                 source={require("../../assets/cameraIcon.png")}
@@ -388,9 +610,11 @@ const TakePhotoAndAnalyseMedicine = () => {
             <Pressable
               style={[
                 styles.secondaryButton,
-                isLargeScreen && styles.buttonLarge
+                isLargeScreen && styles.buttonLarge,
+                isAnalyzing && styles.buttonDisabled
               ]}
               onPress={uploadPhoto}
+              disabled={isAnalyzing}
             >
               <Image
                 source={require("../../assets/arrowIcon.png")}
@@ -423,7 +647,7 @@ const TakePhotoAndAnalyseMedicine = () => {
                 styles.tipsTitle,
                 isLargeScreen && { fontSize: 16 }
               ]}>
-                Tips for best results:
+                Tips for best OCR results:
               </Text>
             </View>
             <View style={styles.tipsList}>
@@ -457,10 +681,17 @@ const TakePhotoAndAnalyseMedicine = () => {
               ]}>
                 • Avoid glare on reflective surfaces
               </Text>
+              <Text style={[
+                styles.tip,
+                isLargeScreen && { fontSize: 14, lineHeight: 22 }
+              ]}>
+                • Focus on text areas for better OCR accuracy
+              </Text>
             </View>
           </View>
         </ScrollView>
 
+        {/* Bottom Navigation - unchanged from your original code */}
         <View style={[
           styles.bottomNav,
           isLargeScreen && styles.bottomNavLarge
@@ -707,6 +938,12 @@ const styles = StyleSheet.create({
     color: "#0f172a",
     fontFamily: "Inter-Medium",
   },
+  previewImage: {
+    width: 200,
+    height: 150,
+    borderRadius: 10,
+    marginTop: 16,
+  },
   buttonRow: {
     flexDirection: "row",
     marginBottom: 24,
@@ -740,6 +977,9 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     flex: 1,
     minHeight: 44,
+  },
+  buttonDisabled: {
+    opacity: 0.6,
   },
   buttonLarge: {
     paddingVertical: 14,

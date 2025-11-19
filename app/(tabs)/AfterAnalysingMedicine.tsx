@@ -8,25 +8,27 @@ import {
   ScrollView,
   useWindowDimensions,
   Platform,
+  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
-
-
-
+import { useRouter, useLocalSearchParams } from "expo-router";
+import { supabase } from "../../lib/supabase";
 
 const AfterAnalysingMedicine = () => {
   const router = useRouter();
+  const params = useLocalSearchParams();
   const { width, height } = useWindowDimensions();
- 
+  
+  // State for medicine data
+  const [medicineData, setMedicineData] = React.useState<any>(null);
+  const [loading, setLoading] = React.useState(true);
+  const [extractedMedicineName, setExtractedMedicineName] = React.useState<string | null>(null);
+
   // Responsive breakpoints
   const isSmallScreen = width < 375;
   const isMediumScreen = width >= 375 && width < 768;
   const isLargeScreen = width >= 768;
   const isExtraLarge = width >= 1024;
-
-
-
 
   // Dynamic padding based on screen size
   const getHorizontalPadding = () => {
@@ -35,8 +37,69 @@ const AfterAnalysingMedicine = () => {
     return 16;
   };
 
+  // Function to fetch medicine data from Supabase
+  const fetchMedicineData = async (medicineName: string) => {
+    try {
+      setLoading(true);
+      console.log("🔍 Searching for medicine:", medicineName);
 
+      // First, try exact match
+      let { data, error } = await supabase
+        .from('medicine_reference')
+        .select('*')
+        .or(`medicine_name.ilike.%${medicineName}%,generic_name.ilike.%${medicineName}%`)
+        .limit(1);
 
+      if (error) {
+        console.error("❌ Supabase query error:", error);
+        throw error;
+      }
+
+      // If no exact match found, try partial match
+      if (!data || data.length === 0) {
+        console.log("🔍 No exact match found, trying partial search...");
+        const { data: partialData, error: partialError } = await supabase
+          .from('medicine_reference')
+          .select('*')
+          .or(`medicine_name.ilike.%${medicineName.split(' ')[0]}%,generic_name.ilike.%${medicineName.split(' ')[0]}%`)
+          .limit(1);
+
+        if (partialError) {
+          console.error("❌ Supabase partial query error:", partialError);
+          throw partialError;
+        }
+
+        data = partialData;
+      }
+
+      if (data && data.length > 0) {
+        console.log("✅ Medicine data found:", data[0].medicine_name);
+        setMedicineData(data[0]);
+      } else {
+        console.log("❌ No medicine data found in database");
+        setMedicineData(null);
+      }
+    } catch (error) {
+      console.error("❌ Error fetching medicine data:", error);
+      Alert.alert("Error", "Failed to fetch medicine information");
+      setMedicineData(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Extract medicine name from params and fetch data
+  React.useEffect(() => {
+    // Get medicine name from navigation params or use a default
+    const medicineName = params.medicineName as string || "Lisinopril";
+    setExtractedMedicineName(medicineName);
+    
+    if (medicineName) {
+      fetchMedicineData(medicineName);
+    } else {
+      setLoading(false);
+    }
+  }, [params.medicineName]);
 
   const dynamicStyles = {
     container: {
@@ -50,8 +113,19 @@ const AfterAnalysingMedicine = () => {
     },
   };
 
-
-
+  // Loading state
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.safeArea} edges={['top']}>
+        <View style={[styles.container, dynamicStyles.container]}>
+          <View style={styles.loadingContainer}>
+            <View style={styles.spinner} />
+            <Text style={styles.loadingText}>Loading medicine information...</Text>
+          </View>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -73,9 +147,6 @@ const AfterAnalysingMedicine = () => {
             </Text>
           </View>
 
-
-
-
           {/* Status Card */}
           <View style={[
             styles.statusCard,
@@ -93,12 +164,9 @@ const AfterAnalysingMedicine = () => {
               styles.statusText,
               isLargeScreen && { fontSize: 17 }
             ]}>
-              Medicine Identified
+              {medicineData ? "Medicine Identified" : "Medicine Information Not Found"}
             </Text>
           </View>
-
-
-
 
           {/* Medicine Info Card */}
           <View style={[
@@ -109,173 +177,181 @@ const AfterAnalysingMedicine = () => {
               styles.medicineName,
               isLargeScreen && { fontSize: 22 }
             ]}>
-              Lisinopril
+              {medicineData?.medicine_name || extractedMedicineName || "Unknown Medicine"}
             </Text>
-            <Text style={[
-              styles.medicineGeneric,
-              isLargeScreen && { fontSize: 16 }
-            ]}>
-              Lisinopril
-            </Text>
-            <View style={[
-              styles.badge,
-              isLargeScreen && { paddingHorizontal: 12, paddingVertical: 6 }
-            ]}>
+            
+            {medicineData?.generic_name && (
               <Text style={[
-                styles.badgeText,
-                isLargeScreen && { fontSize: 14 }
-              ]}>
-                10mg
-              </Text>
-            </View>
-
-
-
-
-            <View style={styles.infoGrid}>
-              <View style={styles.infoRow}>
-                <Text style={[
-                  styles.infoLabel,
-                  isLargeScreen && { fontSize: 15 }
-                ]}>
-                  Shape
-                </Text>
-                <Text style={[
-                  styles.infoValue,
-                  isLargeScreen && { fontSize: 16 }
-                ]}>
-                  Round
-                </Text>
-              </View>
-              <View style={styles.infoRow}>
-                <Text style={[
-                  styles.infoLabel,
-                  isLargeScreen && { fontSize: 15 }
-                ]}>
-                  Color
-                </Text>
-                <Text style={[
-                  styles.infoValue,
-                  isLargeScreen && { fontSize: 16 }
-                ]}>
-                  Pink
-                </Text>
-              </View>
-              <View style={styles.infoRow}>
-                <Text style={[
-                  styles.infoLabel,
-                  isLargeScreen && { fontSize: 15 }
-                ]}>
-                  Imprint
-                </Text>
-                <Text style={[
-                  styles.infoValue,
-                  isLargeScreen && { fontSize: 16 }
-                ]}>
-                  L 10
-                </Text>
-              </View>
-              <View style={styles.infoRow}>
-                <Text style={[
-                  styles.infoLabel,
-                  isLargeScreen && { fontSize: 15 }
-                ]}>
-                  Type
-                </Text>
-                <Text style={[
-                  styles.infoValue,
-                  isLargeScreen && { fontSize: 16 }
-                ]}>
-                  Tablet
-                </Text>
-              </View>
-            </View>
-
-
-
-
-            <View style={styles.section}>
-              <Text style={[
-                styles.sectionTitle,
+                styles.medicineGeneric,
                 isLargeScreen && { fontSize: 16 }
               ]}>
-                Common Uses
+                {medicineData.generic_name}
               </Text>
-              <Text style={[
-                styles.sectionText,
-                isLargeScreen && { fontSize: 15, lineHeight: 22 }
+            )}
+
+            {medicineData?.dosage && (
+              <View style={[
+                styles.badge,
+                isLargeScreen && { paddingHorizontal: 12, paddingVertical: 6 }
               ]}>
-                Treatment of high blood pressure (hypertension) and heart failure
-              </Text>
-            </View>
+                <Text style={[
+                  styles.badgeText,
+                  isLargeScreen && { fontSize: 14 }
+                ]}>
+                  {medicineData.dosage}
+                </Text>
+              </View>
+            )}
 
+            {medicineData ? (
+              <>
+                {/* Common Uses Section */}
+                {medicineData.purpose && (
+                  <View style={styles.section}>
+                    <Text style={[
+                      styles.sectionTitle,
+                      isLargeScreen && { fontSize: 16 }
+                    ]}>
+                      Common Uses
+                    </Text>
+                    <Text style={[
+                      styles.sectionText,
+                      isLargeScreen && { fontSize: 15, lineHeight: 22 }
+                    ]}>
+                      {medicineData.purpose}
+                    </Text>
+                  </View>
+                )}
 
+                {/* How to Use Section */}
+                {medicineData.how_to_lake && (
+                  <View style={styles.section}>
+                    <Text style={[
+                      styles.sectionTitle,
+                      isLargeScreen && { fontSize: 16 }
+                    ]}>
+                      How to Use
+                    </Text>
+                    <Text style={[
+                      styles.sectionText,
+                      isLargeScreen && { fontSize: 15, lineHeight: 22 }
+                    ]}>
+                      {medicineData.how_to_lake}
+                    </Text>
+                  </View>
+                )}
 
+                {/* Common Side Effects Section */}
+                {medicineData.common_side_effects && (
+                  <View style={styles.section}>
+                    <Text style={[
+                      styles.sectionTitle,
+                      isLargeScreen && { fontSize: 16 }
+                    ]}>
+                      Common Side Effects
+                    </Text>
+                    <Text style={[
+                      styles.sectionText,
+                      isLargeScreen && { fontSize: 15, lineHeight: 22 }
+                    ]}>
+                      {medicineData.common_side_effects}
+                    </Text>
+                  </View>
+                )}
 
-            <View style={styles.section}>
-              <Text style={[
-                styles.sectionTitle,
-                isLargeScreen && { fontSize: 16 }
-              ]}>
-                How to Use
-              </Text>
-              <Text style={[
-                styles.sectionText,
-                isLargeScreen && { fontSize: 15, lineHeight: 22 }
-              ]}>
-                Take one tablet by mouth once daily
-              </Text>
-            </View>
+                {/* Serious Side Effects Section */}
+                {medicineData.serious_side_effects && (
+                  <View style={styles.section}>
+                    <Text style={[
+                      styles.sectionTitle,
+                      isLargeScreen && { fontSize: 16 }
+                    ]}>
+                      Serious Side Effects
+                    </Text>
+                    <Text style={[
+                      styles.sectionText,
+                      isLargeScreen && { fontSize: 15, lineHeight: 22 }
+                    ]}>
+                      {medicineData.serious_side_effects}
+                    </Text>
+                  </View>
+                )}
 
+                {/* Warnings Section */}
+                {medicineData.warnings && (
+                  <View style={styles.section}>
+                    <Text style={[
+                      styles.sectionTitle,
+                      isLargeScreen && { fontSize: 16 }
+                    ]}>
+                      Important Warnings
+                    </Text>
+                    <Text style={[
+                      styles.sectionText,
+                      isLargeScreen && { fontSize: 15, lineHeight: 22 }
+                    ]}>
+                      {medicineData.warnings}
+                    </Text>
+                  </View>
+                )}
 
+                {/* Drug Interactions Section */}
+                {medicineData.drug_interactions && (
+                  <View style={styles.section}>
+                    <Text style={[
+                      styles.sectionTitle,
+                      isLargeScreen && { fontSize: 16 }
+                    ]}>
+                      Drug Interactions
+                    </Text>
+                    <Text style={[
+                      styles.sectionText,
+                      isLargeScreen && { fontSize: 15, lineHeight: 22 }
+                    ]}>
+                      {medicineData.drug_interactions}
+                    </Text>
+                  </View>
+                )}
 
+                {/* Storage Section */}
+                {medicineData.storage && (
+                  <View style={styles.section}>
+                    <Text style={[
+                      styles.sectionTitle,
+                      isLargeScreen && { fontSize: 16 }
+                    ]}>
+                      Storage Instructions
+                    </Text>
+                    <Text style={[
+                      styles.sectionText,
+                      isLargeScreen && { fontSize: 15, lineHeight: 22 }
+                    ]}>
+                      {medicineData.storage}
+                    </Text>
+                  </View>
+                )}
 
-            <View style={styles.section}>
-              <Text style={[
-                styles.sectionTitle,
-                isLargeScreen && { fontSize: 16 }
-              ]}>
-                Common Side Effects
-              </Text>
-              <Text style={[
-                styles.sectionText,
-                isLargeScreen && { fontSize: 15, lineHeight: 22 }
-              ]}>
-                • Dry cough{"\n"}• Dizziness{"\n"}• Headache{"\n"}• Fatigue
-              </Text>
-            </View>
-
-
-
-
-            <View style={styles.section}>
-              <Text style={[
-                styles.sectionTitle,
-                isLargeScreen && { fontSize: 16 }
-              ]}>
-                Important Warnings
-              </Text>
-              <Text style={[
-                styles.sectionText,
-                isLargeScreen && { fontSize: 15, lineHeight: 22 }
-              ]}>
-                ⚠ Do not use if pregnant{"\n"}⚠ May cause dizziness{"\n"}⚠ Avoid alcohol
-              </Text>
-            </View>
-
-
-
-
-            <Text style={[
-              styles.manufacturer,
-              isLargeScreen && { fontSize: 14 }
-            ]}>
-              Manufacturer: Accord Healthcare
-            </Text>
+                {/* Manufacturer */}
+                {medicineData.manufacturer && (
+                  <Text style={[
+                    styles.manufacturer,
+                    isLargeScreen && { fontSize: 14 }
+                  ]}>
+                    Manufacturer: {medicineData.manufacturer}
+                  </Text>
+                )}
+              </>
+            ) : (
+              <View style={styles.noDataContainer}>
+                <Text style={styles.noDataText}>
+                  No detailed information found for this medicine in our database.
+                </Text>
+                <Text style={styles.noDataSubtext}>
+                  The medicine was identified but detailed information is not available.
+                </Text>
+              </View>
+            )}
           </View>
-
-
-
 
           {/* Action Buttons */}
           <View style={[
@@ -297,9 +373,6 @@ const AfterAnalysingMedicine = () => {
               </Text>
             </Pressable>
 
-
-
-
             <Pressable
               style={[
                 styles.primaryButton,
@@ -317,7 +390,7 @@ const AfterAnalysingMedicine = () => {
           </View>
         </ScrollView>
 
-        {/* Bottom Navigation */}
+        {/* Bottom Navigation - unchanged */}
         <View style={[
           styles.bottomNav,
           isLargeScreen && styles.bottomNavLarge
@@ -342,9 +415,6 @@ const AfterAnalysingMedicine = () => {
             </Text>
           </Pressable>
 
-
-
-
           <Pressable
             style={styles.navItem}
             onPress={() => router.push("/meds")}
@@ -364,9 +434,6 @@ const AfterAnalysingMedicine = () => {
               Meds
             </Text>
           </Pressable>
-
-
-
 
           <View style={[
             styles.navItemActive,
@@ -388,12 +455,9 @@ const AfterAnalysingMedicine = () => {
             </Text>
           </View>
 
-
-
-
           <Pressable
             style={styles.navItem}
-            onPress={() => router.push("/analytics")}
+            onPress={() => router.push("/analytics" as any)}
           >
             <Image
               source={require("../../assets/chartIcon.png")}
@@ -410,9 +474,6 @@ const AfterAnalysingMedicine = () => {
               Analytics
             </Text>
           </Pressable>
-
-
-
 
           <Pressable
             style={styles.navItem}
@@ -438,9 +499,6 @@ const AfterAnalysingMedicine = () => {
     </SafeAreaView>
   );
 };
-
-
-
 
 const styles = StyleSheet.create({
   safeArea: {
@@ -528,29 +586,6 @@ const styles = StyleSheet.create({
     fontFamily: "Inter-Medium",
     fontWeight: "500",
   },
-  infoGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "space-between",
-    marginBottom: 16,
-    marginTop: 4,
-  },
-  infoRow: {
-    width: "48%",
-    marginBottom: 8,
-  },
-  infoLabel: {
-    color: "#64748b",
-    fontSize: 13,
-    fontFamily: "Inter-Regular",
-    marginBottom: 2,
-  },
-  infoValue: {
-    color: "#0f172a",
-    fontSize: 14,
-    fontFamily: "Inter-Medium",
-    fontWeight: "500",
-  },
   section: {
     marginBottom: 12,
   },
@@ -571,6 +606,43 @@ const styles = StyleSheet.create({
     color: "#64748b",
     fontSize: 12,
     marginTop: 6,
+    fontFamily: "Inter-Regular",
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: 40,
+  },
+  spinner: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 3,
+    borderColor: "#0ea5e9",
+    borderTopColor: "transparent",
+    marginBottom: 16,
+  },
+  loadingText: {
+    fontSize: 16,
+    color: "#64748b",
+    fontFamily: "Inter-Regular",
+  },
+  noDataContainer: {
+    alignItems: "center",
+    paddingVertical: 20,
+  },
+  noDataText: {
+    fontSize: 16,
+    color: "#64748b",
+    textAlign: "center",
+    fontFamily: "Inter-Medium",
+    marginBottom: 8,
+  },
+  noDataSubtext: {
+    fontSize: 14,
+    color: "#94a3b8",
+    textAlign: "center",
     fontFamily: "Inter-Regular",
   },
   buttonRow: {
@@ -691,14 +763,4 @@ const styles = StyleSheet.create({
   },
 });
 
-
-
-
 export default AfterAnalysingMedicine;
-
-
-
-
-
-
-
