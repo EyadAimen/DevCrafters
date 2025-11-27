@@ -195,7 +195,7 @@ export default function Home() {
                   </Text>
                 </Pressable>
 
-                <Pressable style={styles.quickCard}>
+                <Pressable style={styles.quickCard} onPress={() => router.push("/pharmacyLocator")}>
                   <Image
                     source={require("../../assets/locationIconGreen.png")}
                     style={styles.quickIcon}
