@@ -66,11 +66,18 @@ const ActiveMeds = () => {
 			}
 
 			// Fetch reminders for all medicines
-			const medicineIds = medicinesData.map((m: any) => m.id);
-			const { data: remindersData } = await supabase
-				.from('reminders')
-				.select('medicine_id, scheduled_time, days')
-				.in('medicine_id', medicineIds);
+			const medicineIds = medicinesData
+				.map((m: any) => m.medicine_id as string | null)
+				.filter((id): id is string => typeof id === 'string' && id.length > 0);
+
+			let remindersData = null;
+			if (medicineIds.length > 0) {
+				const remindersResponse = await supabase
+					.from('reminders')
+					.select('medicine_id, scheduled_time, days')
+					.in('medicine_id', medicineIds);
+				remindersData = remindersResponse.data;
+			}
 
 			// Create a map of medicine_id to reminder data
 			const reminderMap = new Map<string, { scheduled_time: string; days: string[] }>();

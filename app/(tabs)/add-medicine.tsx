@@ -91,6 +91,7 @@ const AddMedicine = () => {
 				dosage: dosageValue,
 				frequency: formData.frequency,
 				current_stock: parseInt(formData.stock, 10),
+				unit_price: 0, // keep DB constraint happy; price handled elsewhere
 			};
 
 			// Optional fields
