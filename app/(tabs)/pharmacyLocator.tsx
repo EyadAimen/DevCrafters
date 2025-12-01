@@ -199,32 +199,33 @@ export default function PharmacyLocator() {
     refresh();
   }, [refresh]);
 
-  const filteredList = useMemo(() => {
-    const source = activeTab === "all" ? pharmacies : favorites;
-    let list = source.filter((pharmacy) =>
-      !query || pharmacy.name.toLowerCase().includes(query)
-    );
+ const filteredList = useMemo(() => {
+  const source = activeTab === "all" ? pharmacies : favorites;
+  
+  // ✅ Use searchQuery instead of query
+  let list = source.filter((pharmacy) =>
+    !searchQuery || pharmacy.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
-    switch (selectedFilter) {
-      case "nearest":
-        list = [...list].sort((a, b) => (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity));
-        break;
-      case "open":
-        list = list.filter((pharmacy) => pharmacy.isOpen);
-        break;
-      case "top":
-        list = [...list].sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0));
-        break;
-      case "247":
-        list = list.filter((pharmacy) => pharmacy.is247);
-        break;
-      default:
-        break;
-    }
+  switch (selectedFilter) {
+    case "nearest":
+      list = [...list].sort((a, b) => (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity));
+      break;
+    case "open":
+      list = list.filter((pharmacy) => pharmacy.isOpen);
+      break;
+    case "top":
+      list = [...list].sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0));
+      break;
+    case "247":
+      list = list.filter((pharmacy) => pharmacy.is247);
+      break;
+    default:
+      break;
+  }
 
-    return list;
-  }, [activeTab, favorites, pharmacies, searchQuery, selectedFilter]);
-
+  return list;
+}, [activeTab, favorites, pharmacies, searchQuery, selectedFilter]); // ✅ Make sure searchQuery is in dependencies
   const handleDirections = (pharmacy: Pharmacy) => {
     const query =
       pharmacy.latitude && pharmacy.longitude

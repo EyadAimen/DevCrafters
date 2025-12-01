@@ -92,6 +92,55 @@ export default function MedicineDetailsInfo() {
         if (medicineId) fetchMedicine();
     }, [medicineId]);
 
+    const handleRequestRefill = async () => {
+      try {
+        console.log("Starting refill for medicine:", data?.medicine_name);
+        
+        // Fetch medicine price from medicine_prices table
+        let unitPrice = 0;
+        if (data?.medicine_id) {
+          const { data: priceData, error: priceError } = await supabase
+            .from('medicine_prices')
+            .select('unit_price')
+            .eq('medicine_id', data.medicine_id)
+            .single();
+          
+          if (!priceError && priceData) {
+            unitPrice = priceData.unit_price || 0;
+          }
+          console.log("Fetched unit price:", unitPrice);
+        }
+        
+        // Navigate to refill flow with medicine data
+        router.push({
+          pathname: "/(tabs)/onlineRefillOrder",
+          params: {
+            medicineId: data?.medicine_id || "",
+            medicineName: data?.medicine_name || "",
+            dosage: data?.dosage || "",
+            genericName: data?.generic_name || "",
+            unitPrice: unitPrice.toString(),
+            currentStock: data?.current_stock?.toString() || "0"
+          }
+        });
+        
+      } catch (error) {
+        console.error('Error in handleRequestRefill:', error);
+        // Fallback navigation
+        router.push({
+          pathname: "/(tabs)/onlineRefillOrder",
+          params: {
+            medicineId: data?.medicine_id || "",
+            medicineName: data?.medicine_name || "",
+            dosage: data?.dosage || "",
+            genericName: data?.generic_name || "",
+            unitPrice: "0",
+            currentStock: data?.current_stock?.toString() || "0"
+          }
+        });
+      }
+    };
+
     if (loading) {
         return (
             <View style={styles.center}>
@@ -154,7 +203,10 @@ export default function MedicineDetailsInfo() {
                     <TouchableOpacity style={styles.reminderBtn}>
                         <Text style={styles.reminderText}>Set Reminder</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity style={styles.refillBtn}>
+                    <TouchableOpacity 
+                        style={styles.refillBtn}
+                        onPress={handleRequestRefill}  // Updated this line
+                    >
                         <Text style={styles.refillText}>Request Refill</Text>
                     </TouchableOpacity>
                 </View>
