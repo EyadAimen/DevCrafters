@@ -1,5 +1,5 @@
 import * as React from "react";
-import {Text, StyleSheet, View, Pressable, Image, TextInput, ScrollView} from "react-native";
+import {Text, StyleSheet, View, Pressable, Image, TextInput, ScrollView, Alert} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { supabase } from "../../lib/supabase";
@@ -21,8 +21,8 @@ const OnlineRefillOrder2 = () => {
     return value || "";
   };
   
-  // Get data with safe defaults - ADD medicineId HERE
-  const medicineId = getParam("medicineId"); // ← ADD THIS LINE
+  // Get data with safe defaults
+  const medicineId = getParam("medicineId");
   const medicineName = getParam("medicineName");
   const dosage = getParam("dosage");
   const genericName = getParam("genericName");
@@ -32,6 +32,7 @@ const OnlineRefillOrder2 = () => {
   const readyTime = getParam("readyTime");
   const distanceParam = getParam("distance");
   const currentStock = getParam("currentStock");
+  const passedUnitPrice = parseFloat(getParam("unitPrice")) || 0;
   
   // Fix: Parse distance safely and check for NaN
   const distanceNum = parseFloat(distanceParam);
@@ -40,6 +41,7 @@ const OnlineRefillOrder2 = () => {
   const [quantity, setQuantity] = React.useState("30");
   const [unitPrice, setUnitPrice] = React.useState<number | null>(null);
   const [priceMessage, setPriceMessage] = React.useState<string>("Fetching latest price...");
+  const [isLoadingPrice, setIsLoadingPrice] = React.useState(false);
   
   // Calculate total
   const quantityNum = parseInt(quantity) || 0;
@@ -47,9 +49,8 @@ const OnlineRefillOrder2 = () => {
   
   // Debug log to check params
   React.useEffect(() => {
-    console.log("OnlineRefillOrder2 - Received params:", {
-      medicineId, // ← ADD THIS TO LOG
-      unitPrice,
+    console.log("🔍 OnlineRefillOrder2 - Received params:", {
+      medicineId,
       medicineName,
       dosage,
       genericName,
@@ -59,15 +60,16 @@ const OnlineRefillOrder2 = () => {
       readyTime,
       distanceParam,
       distance,
-      currentStock
+      currentStock,
+      passedUnitPrice
     });
-  }, [medicineId, unitPrice, params]);
+  }, [medicineId, medicineName, params]);
 
   React.useEffect(() => {
     let isMounted = true;
 
     const fetchUnitPrice = async () => {
-      if (!medicineId) {
+      if (!medicineName || medicineName === "Medicine") {
         if (isMounted) {
           setUnitPrice(null);
           setPriceMessage("No medicine selected. Please go back and pick a medicine.");
@@ -75,33 +77,77 @@ const OnlineRefillOrder2 = () => {
         return;
       }
 
-      try {
-        setPriceMessage("Fetching latest price...");
+      setIsLoadingPrice(true);
 
+      try {
+        setPriceMessage("Fetching price...");
+        console.log("🔍 Looking for price for medicine:", medicineName);
+
+        // FIRST: Try to fetch price by medicine name
         const { data: priceData, error: priceError } = await supabase
           .from('medicine_prices')
           .select('unit_price')
-          .eq('medicine_id', medicineId)
-          .single();
+          .ilike('medicine_name', `%${medicineName}%`)
+          .limit(1)
+          .maybeSingle();
+
+        console.log("📊 Price query result:", { priceData, priceError });
 
         if (!priceError && typeof priceData?.unit_price === "number") {
+          console.log("✅ Found price by name:", priceData.unit_price);
           if (isMounted) {
             setUnitPrice(priceData.unit_price);
             setPriceMessage("");
+            setIsLoadingPrice(false);
           }
           return;
         }
 
-        console.warn("No price found for medicine:", medicineId, priceError);
+        // SECOND: If not found by exact name, try generic name
+        if (genericName) {
+          console.log("🔍 Trying generic name:", genericName);
+          const { data: genericPriceData } = await supabase
+            .from('medicine_prices')
+            .select('unit_price')
+            .ilike('generic_name', `%${genericName}%`)
+            .limit(1)
+            .maybeSingle();
+
+          if (genericPriceData?.unit_price) {
+            console.log("✅ Found price by generic name:", genericPriceData.unit_price);
+            if (isMounted) {
+              setUnitPrice(genericPriceData.unit_price);
+              setPriceMessage(`Using generic price for ${genericName}`);
+              setIsLoadingPrice(false);
+            }
+            return;
+          }
+        }
+
+        // THIRD: Check if passed unit price is valid
+        if (passedUnitPrice > 0) {
+          console.log("📥 Using passed unit price:", passedUnitPrice);
+          if (isMounted) {
+            setUnitPrice(passedUnitPrice);
+            setPriceMessage("");
+            setIsLoadingPrice(false);
+          }
+          return;
+        }
+
+        // If all attempts fail
+        console.warn("❌ No price found for medicine:", medicineName);
         if (isMounted) {
           setUnitPrice(null);
           setPriceMessage("Price not available for this medicine.");
+          setIsLoadingPrice(false);
         }
       } catch (error) {
-        console.error("Failed to fetch unit price:", error);
+        console.error("💥 Failed to fetch unit price:", error);
         if (isMounted) {
           setUnitPrice(null);
           setPriceMessage("Unable to fetch price. Please try again later.");
+          setIsLoadingPrice(false);
         }
       }
     };
@@ -111,34 +157,75 @@ const OnlineRefillOrder2 = () => {
     return () => {
       isMounted = false;
     };
-  }, [medicineId]);
+  }, [medicineName, genericName, passedUnitPrice]);
   
   const handleContinue = () => {
     if (quantityNum === 0) {
-      alert("Please enter a valid quantity");
+      Alert.alert("Error", "Please enter a valid quantity");
       return;
     }
     
-    // Pass data to next screen - INCLUDE medicineId
+    if (unitPrice === null || unitPrice <= 0) {
+      Alert.alert(
+        "Price Not Available",
+        "No price found for this medicine. Would you like to:\n\n1. Continue with estimated price (RM 25.00)\n2. Go back and try again",
+        [
+          {
+            text: "Cancel",
+            style: "cancel"
+          },
+          {
+            text: "Use Estimated Price",
+            onPress: () => {
+              const estimatedPrice = 25.00;
+              const paramsToPass: Record<string, string> = {
+                medicineId: medicineId,
+                unitPrice: estimatedPrice.toString(),
+                medicineName,
+                dosage,
+                genericName,
+                pharmacyName,
+                pharmacyAddress,
+                quantity: quantity,
+                totalPrice: (estimatedPrice * quantityNum).toFixed(2),
+                currentStock: currentStock || "0"
+              };
+              
+              if (readyTime) paramsToPass.readyTime = readyTime;
+              if (distance) paramsToPass.distance = distance;
+              if (pharmacyId) paramsToPass.pharmacyId = pharmacyId;
+              
+              router.push({
+                pathname: "/(tabs)/onlineRefillOrder3",
+                params: paramsToPass
+              });
+            }
+          }
+        ]
+      );
+      return;
+    }
+    
+    // Pass data to next screen
     const paramsToPass: Record<string, string> = {
-      medicineId: medicineId, // ← ADD THIS LINE (CRITICAL!)
-      unitPrice: unitPrice?.toString() || "0",
+      medicineId: medicineId,
+      unitPrice: unitPrice.toString(),
       medicineName,
       dosage,
       genericName,
       pharmacyName,
       pharmacyAddress,
       quantity: quantity,
-      totalPrice: totalPrice.toFixed(2)
+      totalPrice: totalPrice.toFixed(2),
+      currentStock: currentStock || "0"
     };
     
     // Only add optional fields if they exist and are valid
     if (readyTime) paramsToPass.readyTime = readyTime;
     if (distance) paramsToPass.distance = distance;
-    if (currentStock) paramsToPass.currentStock = currentStock;
     if (pharmacyId) paramsToPass.pharmacyId = pharmacyId;
     
-    console.log("Passing to OnlineRefillOrder3:", paramsToPass);
+    console.log("📤 Passing to OnlineRefillOrder3:", paramsToPass);
     
     router.push({
       pathname: "/(tabs)/onlineRefillOrder3",
@@ -174,10 +261,6 @@ const OnlineRefillOrder2 = () => {
             <Text style={styles.medicineName}>
               {medicineName || "Medicine"} {dosage || ""}
             </Text>
-            {/* Add medicine ID display for debugging */}
-            <Text style={styles.medicineIdText}>
-              Medicine ID: {medicineId || "Not available"}
-            </Text>
           </View>
         </View>
 
@@ -205,6 +288,26 @@ const OnlineRefillOrder2 = () => {
           </View>
         </View>
 
+        {/* Price Status Banner */}
+        {isLoadingPrice && (
+          <View style={styles.priceStatusBanner}>
+            <Text style={styles.priceStatusBannerText}>
+              ⏳ Fetching price for {medicineName}...
+            </Text>
+          </View>
+        )}
+        
+        {!isLoadingPrice && priceMessage && (
+          <View style={[
+            styles.priceStatusBanner,
+            unitPrice !== null ? styles.priceStatusSuccess : styles.priceStatusWarning
+          ]}>
+            <Text style={styles.priceStatusBannerText}>
+              {unitPrice !== null ? `✅ Price: RM ${unitPrice.toFixed(2)}` : `⚠️ ${priceMessage}`}
+            </Text>
+          </View>
+        )}
+
         {/* Quantity Selection Section */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Select Quantity</Text>
@@ -221,14 +324,23 @@ const OnlineRefillOrder2 = () => {
                 placeholderTextColor="#94A3B8"
                 maxLength={4}
               />
+              
               {quantityNum > 0 && unitPrice !== null && (
-                <Text style={styles.pricePreview}>
-                  RM {unitPrice.toFixed(2)} × {quantity} = RM {totalPrice.toFixed(2)}
-                </Text>
+                <View style={styles.priceBreakdown}>
+                  <Text style={styles.priceBreakdownText}>
+                    {quantity} × RM {unitPrice.toFixed(2)} = 
+                    <Text style={styles.totalPriceText}> RM {totalPrice.toFixed(2)}</Text>
+                  </Text>
+                </View>
               )}
-              {priceMessage ? (
-                <Text style={styles.priceStatusText}>{priceMessage}</Text>
-              ) : null}
+              
+              {quantityNum > 0 && unitPrice === null && (
+                <View style={styles.priceWarning}>
+                  <Text style={styles.priceWarningText}>
+                    Price not available. Total cannot be calculated.
+                  </Text>
+                </View>
+              )}
             </View>
             
             {/* Quick Quantity Buttons */}
@@ -265,17 +377,6 @@ const OnlineRefillOrder2 = () => {
               </Text>
             </View>
             
-            {/* Medicine ID - Add this row */}
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Medicine ID:</Text>
-              <Text style={[
-                styles.summaryValue, 
-                !medicineId && styles.missingDataText
-              ]}>
-                {medicineId || "Missing"}
-              </Text>
-            </View>
-            
             {/* Generic Name - Only show if available */}
             {genericName ? (
               <View style={styles.summaryRow}>
@@ -289,13 +390,6 @@ const OnlineRefillOrder2 = () => {
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Pharmacy:</Text>
                 <Text style={styles.summaryValue}>{pharmacyName}</Text>
-              </View>
-            ) : null}
-            
-            {pharmacyId ? (
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Pharmacy ID:</Text>
-                <Text style={styles.summaryValue}>{pharmacyId}</Text>
               </View>
             ) : null}
             
@@ -337,12 +431,15 @@ const OnlineRefillOrder2 = () => {
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>Unit Price:</Text>
               <View style={styles.summaryValueColumn}>
-                <Text style={styles.summaryValue}>
-                  {unitPrice !== null ? `RM ${unitPrice.toFixed(2)}` : "Price not available"}
+                <Text style={[
+                  styles.summaryValue,
+                  unitPrice === null && styles.missingDataText
+                ]}>
+                  {unitPrice !== null ? `RM ${unitPrice.toFixed(2)}` : "Not available"}
                 </Text>
-                {priceMessage ? (
-                  <Text style={styles.priceStatusText}>{priceMessage}</Text>
-                ) : null}
+                {priceMessage && unitPrice === null && (
+                  <Text style={styles.priceMessageText}>{priceMessage}</Text>
+                )}
               </View>
             </View>
             
@@ -358,8 +455,11 @@ const OnlineRefillOrder2 = () => {
             {/* Total */}
             <View style={[styles.summaryRow, styles.totalRow]}>
               <Text style={styles.summaryTotalLabel}>Total Amount:</Text>
-              <Text style={styles.summaryTotalValue}>
-                {unitPrice !== null && totalPrice > 0 ? `RM ${totalPrice.toFixed(2)}` : "RM 0.00"}
+              <Text style={[
+                styles.summaryTotalValue,
+                totalPrice === 0 && unitPrice === null && styles.missingDataText
+              ]}>
+                {totalPrice > 0 ? `RM ${totalPrice.toFixed(2)}` : "RM 0.00"}
               </Text>
             </View>
           </View>
@@ -369,15 +469,22 @@ const OnlineRefillOrder2 = () => {
         <Pressable 
           style={[
             styles.continueButton,
-            (quantityNum === 0 || unitPrice === null) && styles.continueButtonDisabled
+            (quantityNum === 0 || unitPrice === null || isLoadingPrice) && styles.continueButtonDisabled
           ]} 
           onPress={handleContinue}
-          disabled={quantityNum === 0 || unitPrice === null}
+          disabled={quantityNum === 0 || unitPrice === null || isLoadingPrice}
         >
           <Text style={styles.continueButtonText}>
-            Continue to Payment
+            {isLoadingPrice 
+              ? "Loading Price..." 
+              : unitPrice === null 
+                ? "Price Not Available" 
+                : `Continue to Payment - RM ${totalPrice.toFixed(2)}`
+            }
           </Text>
-          <Image source={forwardIcon} style={styles.arrowIcon} resizeMode="contain" />
+          {!isLoadingPrice && unitPrice !== null && (
+            <Image source={forwardIcon} style={styles.arrowIcon} resizeMode="contain" />
+          )}
         </Pressable>
       </ScrollView>
     </SafeAreaView>
@@ -400,7 +507,7 @@ const styles = StyleSheet.create({
   headerSection: {
     flexDirection: "row",
     alignItems: "flex-start",
-    marginBottom: 32,
+    marginBottom: 24,
   },
   backButton: {
     width: 40,
@@ -436,16 +543,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: "#64748b",
   },
-  medicineIdText: {
-    fontSize: 12,
-    color: "#94a3b8",
-    marginTop: 2,
-  },
   progressContainer: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 32,
+    marginBottom: 16,
     paddingHorizontal: 8,
   },
   progressStep: {
@@ -513,6 +615,27 @@ const styles = StyleSheet.create({
     marginHorizontal: 8,
     marginBottom: 20,
   },
+  priceStatusBanner: {
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 20,
+    alignItems: "center",
+  },
+  priceStatusSuccess: {
+    backgroundColor: "#f0fdf4",
+    borderWidth: 1,
+    borderColor: "#bbf7d0",
+  },
+  priceStatusWarning: {
+    backgroundColor: "#fef3c7",
+    borderWidth: 1,
+    borderColor: "#fbbf24",
+  },
+  priceStatusBannerText: {
+    fontSize: 14,
+    fontWeight: "600",
+    textAlign: "center",
+  },
   section: {
     marginBottom: 24,
   },
@@ -554,14 +677,35 @@ const styles = StyleSheet.create({
     fontSize: 16,
     backgroundColor: "#f8fafc",
     color: "#0f172a",
-    marginBottom: 8,
+    marginBottom: 12,
   },
-  pricePreview: {
-    fontSize: 14,
+  priceBreakdown: {
+    backgroundColor: "#f0f9ff",
+    borderRadius: 8,
+    padding: 12,
+    alignItems: "center",
+  },
+  priceBreakdownText: {
+    fontSize: 16,
+    color: "#0369a1",
+    fontWeight: "500",
+  },
+  totalPriceText: {
     color: "#0ea5e9",
-    fontWeight: "600",
-    marginTop: 8,
-    textAlign: "right",
+    fontWeight: "700",
+    fontSize: 18,
+  },
+  priceWarning: {
+    backgroundColor: "#fffbeb",
+    borderRadius: 8,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "#fde68a",
+  },
+  priceWarningText: {
+    fontSize: 14,
+    color: "#92400e",
+    textAlign: "center",
   },
   quickQuantityContainer: {
     marginTop: 8,
@@ -642,6 +786,11 @@ const styles = StyleSheet.create({
     color: "#ef4444",
     fontWeight: "600",
   },
+  priceMessageText: {
+    fontSize: 12,
+    color: "#f97316",
+    marginTop: 4,
+  },
   summaryDivider: {
     height: 1,
     backgroundColor: "#e2e8f0",
@@ -687,12 +836,6 @@ const styles = StyleSheet.create({
   arrowIcon: {
     width: 16,
     height: 16,
-  },
-  priceStatusText: {
-    fontSize: 12,
-    color: "#f97316",
-    marginTop: 6,
-    textAlign: "right",
   },
 });
 
