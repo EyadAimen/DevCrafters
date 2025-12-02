@@ -58,6 +58,13 @@
             "backgroundColor": "#000000"
           }
         }
+      ],
+      [
+        "@stripe/stripe-react-native",
+        {
+          "merchantIdentifier": "merchant.com.your.app",
+          "enableGooglePay": true
+        }
       ]
     ],
 
