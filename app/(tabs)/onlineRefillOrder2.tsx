@@ -8,6 +8,74 @@ import { supabase } from "../../lib/supabase";
 const backArrow = require("../../assets/backArrow.png");
 const forwardIcon = require("../../assets/forwardIcon.png");
 
+// Helper function to fetch medicine price
+const fetchMedicinePrice = async (medicineId: string) => {
+  try {
+    // 1. Get medicine details from medicines table
+    const { data: medicineData, error: medicineError } = await supabase
+      .from('medicines')
+      .select('medicine_name, dosage, generic_name, unit_price')
+      .eq('medicine_id', medicineId)
+      .single();
+
+    if (medicineError || !medicineData) {
+      console.error("Failed to fetch medicine details:", medicineError);
+      return { price: null, message: "Could not find medicine details." };
+    }
+
+    const { medicine_name, dosage, generic_name, unit_price: medTablePrice } = medicineData;
+
+    // 2. Try to get price from medicine_prices table
+    let priceFromPriceTable = null;
+
+    // Try exact match first
+    const { data: exactMatch } = await supabase
+      .from('medicine_prices')
+      .select('unit_price')
+      .eq('medicine_name', medicine_name)
+      .maybeSingle();
+
+    if (exactMatch?.unit_price) {
+      priceFromPriceTable = exactMatch.unit_price;
+    } else {
+      // Try case-insensitive match
+      const { data: similarMatch } = await supabase
+        .from('medicine_prices')
+        .select('unit_price')
+        .ilike('medicine_name', medicine_name)
+        .maybeSingle();
+
+      if (similarMatch?.unit_price) {
+        priceFromPriceTable = similarMatch.unit_price;
+      } else if (generic_name) {
+        // Try generic name match
+        const { data: genericMatch } = await supabase
+          .from('medicine_prices')
+          .select('unit_price')
+          .ilike('generic_name', generic_name)
+          .maybeSingle();
+
+        if (genericMatch?.unit_price) {
+          priceFromPriceTable = genericMatch.unit_price;
+        }
+      }
+    }
+
+    // 3. Return the best available price
+    const finalPrice = priceFromPriceTable || medTablePrice || 0;
+    
+    return {
+      price: finalPrice,
+      message: finalPrice ? "" : "Price not available",
+      source: priceFromPriceTable ? "price_table" : medTablePrice ? "medicines_table" : "none"
+    };
+    
+  } catch (error) {
+    console.error("Error fetching medicine price:", error);
+    return { price: 0, message: "Error fetching price." };
+  }
+};
+
 const OnlineRefillOrder2 = () => {
   const router = useRouter();
   const params = useLocalSearchParams();
@@ -21,8 +89,8 @@ const OnlineRefillOrder2 = () => {
     return value || "";
   };
   
-  // Get data with safe defaults - ADD medicineId HERE
-  const medicineId = getParam("medicineId"); // ← ADD THIS LINE
+  // Get data with safe defaults
+  const medicineId = getParam("medicineId");
   const medicineName = getParam("medicineName");
   const dosage = getParam("dosage");
   const genericName = getParam("genericName");
@@ -32,24 +100,25 @@ const OnlineRefillOrder2 = () => {
   const readyTime = getParam("readyTime");
   const distanceParam = getParam("distance");
   const currentStock = getParam("currentStock");
+  const passedUnitPrice = parseFloat(getParam("unitPrice")) || 0;
   
   // Fix: Parse distance safely and check for NaN
   const distanceNum = parseFloat(distanceParam);
   const distance = isNaN(distanceNum) ? "" : distanceNum.toFixed(1);
   
   const [quantity, setQuantity] = React.useState("30");
-  const [unitPrice, setUnitPrice] = React.useState<number | null>(null);
-  const [priceMessage, setPriceMessage] = React.useState<string>("Fetching latest price...");
+  const [unitPrice, setUnitPrice] = React.useState<number>(passedUnitPrice);
+  const [priceMessage, setPriceMessage] = React.useState<string>("");
   
   // Calculate total
   const quantityNum = parseInt(quantity) || 0;
-  const totalPrice = (unitPrice ?? 0) * quantityNum;
+  const totalPrice = unitPrice * quantityNum;
   
   // Debug log to check params
   React.useEffect(() => {
     console.log("OnlineRefillOrder2 - Received params:", {
-      medicineId, // ← ADD THIS TO LOG
-      unitPrice,
+      medicineId,
+      passedUnitPrice,
       medicineName,
       dosage,
       genericName,
@@ -57,56 +126,36 @@ const OnlineRefillOrder2 = () => {
       pharmacyName,
       pharmacyAddress,
       readyTime,
-      distanceParam,
       distance,
       currentStock
     });
-  }, [medicineId, unitPrice, params]);
+  }, [medicineId, passedUnitPrice, params]);
 
   React.useEffect(() => {
     let isMounted = true;
 
-    const fetchUnitPrice = async () => {
+    const fetchPrice = async () => {
       if (!medicineId) {
         if (isMounted) {
-          setUnitPrice(null);
           setPriceMessage("No medicine selected. Please go back and pick a medicine.");
         }
         return;
       }
 
-      try {
+      if (isMounted) {
         setPriceMessage("Fetching latest price...");
+      }
 
-        const { data: priceData, error: priceError } = await supabase
-          .from('medicine_prices')
-          .select('unit_price')
-          .eq('medicine_id', medicineId)
-          .single();
+      const { price, message } = await fetchMedicinePrice(medicineId);
 
-        if (!priceError && typeof priceData?.unit_price === "number") {
-          if (isMounted) {
-            setUnitPrice(priceData.unit_price);
-            setPriceMessage("");
-          }
-          return;
-        }
-
-        console.warn("No price found for medicine:", medicineId, priceError);
-        if (isMounted) {
-          setUnitPrice(null);
-          setPriceMessage("Price not available for this medicine.");
-        }
-      } catch (error) {
-        console.error("Failed to fetch unit price:", error);
-        if (isMounted) {
-          setUnitPrice(null);
-          setPriceMessage("Unable to fetch price. Please try again later.");
-        }
+      if (isMounted) {
+        setUnitPrice(price || 0);
+        setPriceMessage(message);
+        console.log("Price fetched:", { price, message });
       }
     };
 
-    fetchUnitPrice();
+    fetchPrice();
 
     return () => {
       isMounted = false;
@@ -119,10 +168,15 @@ const OnlineRefillOrder2 = () => {
       return;
     }
     
-    // Pass data to next screen - INCLUDE medicineId
+    if (unitPrice <= 0) {
+      alert("Price not available. Please try again later.");
+      return;
+    }
+    
+    // Pass data to next screen
     const paramsToPass: Record<string, string> = {
-      medicineId: medicineId, // ← ADD THIS LINE (CRITICAL!)
-      unitPrice: unitPrice?.toString() || "0",
+      medicineId: medicineId,
+      unitPrice: unitPrice.toString(),
       medicineName,
       dosage,
       genericName,
@@ -174,9 +228,8 @@ const OnlineRefillOrder2 = () => {
             <Text style={styles.medicineName}>
               {medicineName || "Medicine"} {dosage || ""}
             </Text>
-            {/* Add medicine ID display for debugging */}
-            <Text style={styles.medicineIdText}>
-              Medicine ID: {medicineId || "Not available"}
+            <Text style={styles.priceDisplay}>
+              {unitPrice > 0 ? `RM ${unitPrice.toFixed(2)} per unit` : "Price loading..."}
             </Text>
           </View>
         </View>
@@ -221,7 +274,7 @@ const OnlineRefillOrder2 = () => {
                 placeholderTextColor="#94A3B8"
                 maxLength={4}
               />
-              {quantityNum > 0 && unitPrice !== null && (
+              {quantityNum > 0 && unitPrice > 0 && (
                 <Text style={styles.pricePreview}>
                   RM {unitPrice.toFixed(2)} × {quantity} = RM {totalPrice.toFixed(2)}
                 </Text>
@@ -265,17 +318,6 @@ const OnlineRefillOrder2 = () => {
               </Text>
             </View>
             
-            {/* Medicine ID - Add this row */}
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Medicine ID:</Text>
-              <Text style={[
-                styles.summaryValue, 
-                !medicineId && styles.missingDataText
-              ]}>
-                {medicineId || "Missing"}
-              </Text>
-            </View>
-            
             {/* Generic Name - Only show if available */}
             {genericName ? (
               <View style={styles.summaryRow}>
@@ -289,13 +331,6 @@ const OnlineRefillOrder2 = () => {
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Pharmacy:</Text>
                 <Text style={styles.summaryValue}>{pharmacyName}</Text>
-              </View>
-            ) : null}
-            
-            {pharmacyId ? (
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Pharmacy ID:</Text>
-                <Text style={styles.summaryValue}>{pharmacyId}</Text>
               </View>
             ) : null}
             
@@ -338,7 +373,7 @@ const OnlineRefillOrder2 = () => {
               <Text style={styles.summaryLabel}>Unit Price:</Text>
               <View style={styles.summaryValueColumn}>
                 <Text style={styles.summaryValue}>
-                  {unitPrice !== null ? `RM ${unitPrice.toFixed(2)}` : "Price not available"}
+                  {unitPrice > 0 ? `RM ${unitPrice.toFixed(2)}` : "Price not available"}
                 </Text>
                 {priceMessage ? (
                   <Text style={styles.priceStatusText}>{priceMessage}</Text>
@@ -359,7 +394,7 @@ const OnlineRefillOrder2 = () => {
             <View style={[styles.summaryRow, styles.totalRow]}>
               <Text style={styles.summaryTotalLabel}>Total Amount:</Text>
               <Text style={styles.summaryTotalValue}>
-                {unitPrice !== null && totalPrice > 0 ? `RM ${totalPrice.toFixed(2)}` : "RM 0.00"}
+                {unitPrice > 0 && totalPrice > 0 ? `RM ${totalPrice.toFixed(2)}` : "RM 0.00"}
               </Text>
             </View>
           </View>
@@ -369,10 +404,10 @@ const OnlineRefillOrder2 = () => {
         <Pressable 
           style={[
             styles.continueButton,
-            (quantityNum === 0 || unitPrice === null) && styles.continueButtonDisabled
+            (quantityNum === 0 || unitPrice <= 0) && styles.continueButtonDisabled
           ]} 
           onPress={handleContinue}
-          disabled={quantityNum === 0 || unitPrice === null}
+          disabled={quantityNum === 0 || unitPrice <= 0}
         >
           <Text style={styles.continueButtonText}>
             Continue to Payment
@@ -384,6 +419,7 @@ const OnlineRefillOrder2 = () => {
   );
 };
 
+// Styles remain the same...
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -436,9 +472,10 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: "#64748b",
   },
-  medicineIdText: {
-    fontSize: 12,
-    color: "#94a3b8",
+  priceDisplay: {
+    fontSize: 14,
+    color: "#0ea5e9",
+    fontWeight: "600",
     marginTop: 2,
   },
   progressContainer: {

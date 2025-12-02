@@ -72,6 +72,67 @@ const OnlineRefillOrder = () => {
     return '4 hours';
   };
   
+  // Function to fetch price from medicine_prices table
+  const fetchMedicinePrice = async (medicineName: string, dosage: string, genericName: string) => {
+    let finalPrice = passedUnitPrice;
+    
+    try {
+      // Strategy 1: Try exact match with medicine_name and dosage
+      const { data: exactMatch } = await supabase
+        .from('medicine_prices')
+        .select('unit_price')
+        .eq('medicine_name', medicineName)
+        .eq('dosage', dosage)
+        .maybeSingle();
+      
+      if (exactMatch?.unit_price) {
+        return exactMatch.unit_price;
+      }
+      
+      // Strategy 2: Try case-insensitive medicine_name match
+      const { data: caseInsensitiveMatch } = await supabase
+        .from('medicine_prices')
+        .select('unit_price')
+        .ilike('medicine_name', medicineName)
+        .maybeSingle();
+      
+      if (caseInsensitiveMatch?.unit_price) {
+        return caseInsensitiveMatch.unit_price;
+      }
+      
+      // Strategy 3: Try generic name match
+      if (genericName) {
+        const { data: genericMatch } = await supabase
+          .from('medicine_prices')
+          .select('unit_price')
+          .ilike('generic_name', genericName)
+          .maybeSingle();
+        
+        if (genericMatch?.unit_price) {
+          return genericMatch.unit_price;
+        }
+      }
+      
+      // Strategy 4: Try any medicine_name containing the search term
+      const { data: partialMatch } = await supabase
+        .from('medicine_prices')
+        .select('unit_price')
+        .ilike('medicine_name', `%${medicineName}%`)
+        .limit(1)
+        .maybeSingle();
+      
+      if (partialMatch?.unit_price) {
+        return partialMatch.unit_price;
+      }
+      
+      return finalPrice; // Return passed price if nothing found
+      
+    } catch (error) {
+      console.error('Error fetching price:', error);
+      return finalPrice; // Return passed price on error
+    }
+  };
+  
   React.useEffect(() => {
     console.log("OnlineRefillOrder - Received params:", {
       medicineId,
@@ -103,20 +164,26 @@ const OnlineRefillOrder = () => {
           
           if (medicineError) throw medicineError;
           
-          // Fetch price from medicine_prices table
-          const { data: priceData, error: priceError } = await supabase
-            .from('medicine_prices')
-            .select('unit_price')
-            .eq('medicine_id', medicineId)
-            .single();
+          // Fetch price using our new function
+          const fetchedPrice = await fetchMedicinePrice(
+            medicineData.medicine_name,
+            medicineData.dosage || '',
+            medicineData.generic_name || ''
+          );
           
           finalMedicineInfo = {
             medicine_id: medicineData.medicine_id,
             medicine_name: medicineData.medicine_name,
             generic_name: medicineData.generic_name || "",
             dosage: medicineData.dosage || "",
-            unit_price: priceData?.unit_price || passedUnitPrice || 0
+            unit_price: fetchedPrice
           };
+          
+          console.log('Fetched medicine info:', {
+            name: medicineData.medicine_name,
+            price: fetchedPrice,
+            source: fetchedPrice === passedUnitPrice ? 'passed param' : 'database'
+          });
           
         } catch (dbError) {
           console.log("Using passed data instead of database:", dbError);
