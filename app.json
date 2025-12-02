@@ -58,10 +58,7 @@
             "backgroundColor": "#000000"
           }
         }
-      ]
-    ],
-
-    "plugins": [
+      ],
       [
         "@stripe/stripe-react-native",
         {
