@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { 
+import {
     View,
     Text,
     ScrollView,
@@ -26,6 +26,8 @@ type Order = {
     status: string;
     total: number;
     pharmacy_name?: string;
+    shipping_address?: any;
+    payment_method?: string;
     items: OrderItem[];
 };
 
@@ -58,46 +60,48 @@ export default function OrderDetailsPage() {
     const fetchOrderDetails = async () => {
         setLoading(true);
         try {
+            // CORRECTED: Use the right relationship name
             const { data, error } = await supabase
                 .from("orders")
-                .select(
-                    `
-          order_id,
-          created_at,
-          status,
-          total_amount,
-          pharmacy_name,
-          order_items (
-            item_id,
-            medicine_name,
-            quantity,
-            unit_price,
-            subtotal
-          )
-        `
+                .select(`
+                order_id,
+                created_at,
+                status,
+                total_amount,
+                pharmacy_name,
+                shipping_address,
+                payment_method,
+                order_items (
+                    item_id,
+                    medicine_name,
+                    quantity,
+                    unit_price,
+                    subtotal
                 )
+            `)
                 .eq("order_id", orderId)
                 .single();
 
             if (error) throw error;
 
+            console.log("Order details data:", data); // Debug
+
             if (data) {
                 const formattedOrder: Order = {
                     id: data.order_id,
                     date: new Date(data.created_at).toLocaleDateString(),
-                    status:
-                        data.status?.charAt(0).toUpperCase() + data.status?.slice(1) ||
-                        "Pending",
+                    status: data.status?.charAt(0).toUpperCase() + data.status?.slice(1) || "Pending",
                     total: data.total_amount || 0,
                     pharmacy_name: data.pharmacy_name,
-                    items:
-                        data.order_items?.map((item: any) => ({
-                            item_id: item.item_id,
-                            medicine_name: item.medicine_name,
-                            quantity: item.quantity || 1,
-                            unit_price: item.unit_price || 0,
-                            subtotal: item.subtotal || 0,
-                        })) || [],
+                    shipping_address: data.shipping_address,
+                    payment_method: data.payment_method,
+                    items: data.order_items?.map((item: any) => ({
+                        item_id: item.item_id,
+                        medicine_name: item.medicine_name,
+                        quantity: item.quantity || 1,
+                        unit_price: item.unit_price || 0,
+                        subtotal: item.subtotal || 0,
+                    })) || [],
                 };
                 setOrder(formattedOrder);
             }
@@ -126,8 +130,6 @@ export default function OrderDetailsPage() {
     }
 
     const statusStyle = getStatusStyle(order.status);
-    const subtotal = order.items.reduce((sum, item) => sum + item.subtotal, 0);
-    const shipping = order.total - subtotal;
 
     return (
         <ScrollView style={styles.container}>
@@ -144,14 +146,14 @@ export default function OrderDetailsPage() {
             <View style={styles.content}>
                 <View style={styles.card}>
                     <View style={styles.cardHeader}>
-            <Text style={styles.orderId}>Order #{order.id.substring(0, 8).toUpperCase()}</Text>
+                        <Text style={styles.orderId}>Order #{order.id.substring(0, 8).toUpperCase()}</Text>
                         <View style={[styles.statusBadge, { backgroundColor: statusStyle.backgroundColor }]}>
                             <Text style={[styles.statusText, { color: statusStyle.color }]}>
                                 {order.status}
                             </Text>
                         </View>
                     </View>
-          <Text style={styles.orderDate}>Placed on {order.date}</Text>
+                    <Text style={styles.orderDate}>Placed on {order.date}</Text>
                     {order.pharmacy_name && (
                         <Text style={styles.pharmacyName}>From: {order.pharmacy_name}</Text>
                     )}
@@ -174,15 +176,6 @@ export default function OrderDetailsPage() {
 
                 <View style={styles.card}>
                     <Text style={styles.sectionTitle}>Order Summary</Text>
-                    <View style={styles.summaryRow}>
-                        <Text style={styles.summaryLabel}>Subtotal</Text>
-                        <Text style={styles.summaryValue}>RM{subtotal.toFixed(2)}</Text>
-                    </View>
-                    <View style={styles.summaryRow}>
-                        <Text style={styles.summaryLabel}>Shipping & Handling</Text>
-                        <Text style={styles.summaryValue}>RM{shipping.toFixed(2)}</Text>
-                    </View>
-                    <View style={styles.divider} />
                     <View style={styles.summaryRow}>
                         <Text style={styles.summaryTotalLabel}>Total</Text>
                         <Text style={styles.summaryTotalValue}>RM{order.total.toFixed(2)}</Text>
@@ -209,7 +202,7 @@ const styles = StyleSheet.create({
         borderColor: "#f1f5f9",
     },
     backButton: { marginRight: 12, padding: 4 },
-  backIcon: { width: 24, height: 24, tintColor: '#0f172a' },
+    backIcon: { width: 24, height: 24, tintColor: '#0f172a' },
     title: { fontSize: 24, fontWeight: "bold", color: "#0f172a" },
     card: {
         backgroundColor: "#fff",
@@ -218,9 +211,9 @@ const styles = StyleSheet.create({
         marginBottom: 16,
         borderWidth: 1,
         borderColor: "#e2e8f0",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.05,
     },
     cardHeader: {
         flexDirection: "row",
@@ -228,7 +221,7 @@ const styles = StyleSheet.create({
         alignItems: "center",
         marginBottom: 4,
     },
-  orderId: { fontSize: 20, fontWeight: "bold", color: "#0f172a" },
+    orderId: { fontSize: 20, fontWeight: "bold", color: "#0f172a" },
     statusBadge: {
         borderRadius: 12,
         paddingHorizontal: 10,
@@ -236,7 +229,7 @@ const styles = StyleSheet.create({
     },
     statusText: { fontSize: 12, fontWeight: "600" },
     orderDate: { fontSize: 14, color: "#64748b", marginBottom: 4 },
-  pharmacyName: { fontSize: 14, color: "#64748b", fontStyle: 'italic' },
+    pharmacyName: { fontSize: 14, color: "#64748b", fontStyle: 'italic' },
     sectionTitle: {
         fontSize: 16,
         fontWeight: "bold",
@@ -247,8 +240,8 @@ const styles = StyleSheet.create({
         flexDirection: "row",
         justifyContent: "space-between",
         paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f8fafc',
+        borderBottomWidth: 1,
+        borderBottomColor: '#f8fafc',
     },
     itemDetails: { flex: 1 },
     itemName: { fontSize: 15, color: "#334155" },
@@ -261,7 +254,7 @@ const styles = StyleSheet.create({
     },
     summaryLabel: { fontSize: 15, color: "#475569" },
     summaryValue: { fontSize: 15, color: "#475569" },
-  divider: { height: 1, backgroundColor: "#f1f5f9", marginVertical: 12 },
+    divider: { height: 1, backgroundColor: "#f1f5f9", marginVertical: 12 },
     summaryTotalLabel: { fontSize: 16, fontWeight: "bold", color: "#0f172a" },
     summaryTotalValue: { fontSize: 18, fontWeight: "bold", color: "#0ea5e9" },
 });
