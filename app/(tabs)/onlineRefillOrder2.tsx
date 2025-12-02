@@ -1,5 +1,5 @@
 import * as React from "react";
-import {Text, StyleSheet, View, Pressable, Image, TextInput, ScrollView, Alert} from "react-native";
+import {Text, StyleSheet, View, Pressable, Image, TextInput, ScrollView} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { supabase } from "../../lib/supabase";
@@ -7,6 +7,74 @@ import { supabase } from "../../lib/supabase";
 // Import your actual images
 const backArrow = require("../../assets/backArrow.png");
 const forwardIcon = require("../../assets/forwardIcon.png");
+
+// Helper function to fetch medicine price
+const fetchMedicinePrice = async (medicineId: string) => {
+  try {
+    // 1. Get medicine details from medicines table
+    const { data: medicineData, error: medicineError } = await supabase
+      .from('medicines')
+      .select('medicine_name, dosage, generic_name, unit_price')
+      .eq('medicine_id', medicineId)
+      .single();
+
+    if (medicineError || !medicineData) {
+      console.error("Failed to fetch medicine details:", medicineError);
+      return { price: null, message: "Could not find medicine details." };
+    }
+
+    const { medicine_name, dosage, generic_name, unit_price: medTablePrice } = medicineData;
+
+    // 2. Try to get price from medicine_prices table
+    let priceFromPriceTable = null;
+
+    // Try exact match first
+    const { data: exactMatch } = await supabase
+      .from('medicine_prices')
+      .select('unit_price')
+      .eq('medicine_name', medicine_name)
+      .maybeSingle();
+
+    if (exactMatch?.unit_price) {
+      priceFromPriceTable = exactMatch.unit_price;
+    } else {
+      // Try case-insensitive match
+      const { data: similarMatch } = await supabase
+        .from('medicine_prices')
+        .select('unit_price')
+        .ilike('medicine_name', medicine_name)
+        .maybeSingle();
+
+      if (similarMatch?.unit_price) {
+        priceFromPriceTable = similarMatch.unit_price;
+      } else if (generic_name) {
+        // Try generic name match
+        const { data: genericMatch } = await supabase
+          .from('medicine_prices')
+          .select('unit_price')
+          .ilike('generic_name', generic_name)
+          .maybeSingle();
+
+        if (genericMatch?.unit_price) {
+          priceFromPriceTable = genericMatch.unit_price;
+        }
+      }
+    }
+
+    // 3. Return the best available price
+    const finalPrice = priceFromPriceTable || medTablePrice || 0;
+    
+    return {
+      price: finalPrice,
+      message: finalPrice ? "" : "Price not available",
+      source: priceFromPriceTable ? "price_table" : medTablePrice ? "medicines_table" : "none"
+    };
+    
+  } catch (error) {
+    console.error("Error fetching medicine price:", error);
+    return { price: 0, message: "Error fetching price." };
+  }
+};
 
 const OnlineRefillOrder2 = () => {
   const router = useRouter();
@@ -39,18 +107,18 @@ const OnlineRefillOrder2 = () => {
   const distance = isNaN(distanceNum) ? "" : distanceNum.toFixed(1);
   
   const [quantity, setQuantity] = React.useState("30");
-  const [unitPrice, setUnitPrice] = React.useState<number | null>(null);
-  const [priceMessage, setPriceMessage] = React.useState<string>("Fetching latest price...");
-  const [isLoadingPrice, setIsLoadingPrice] = React.useState(false);
+  const [unitPrice, setUnitPrice] = React.useState<number>(passedUnitPrice);
+  const [priceMessage, setPriceMessage] = React.useState<string>("");
   
   // Calculate total
   const quantityNum = parseInt(quantity) || 0;
-  const totalPrice = (unitPrice ?? 0) * quantityNum;
+  const totalPrice = unitPrice * quantityNum;
   
   // Debug log to check params
   React.useEffect(() => {
-    console.log("🔍 OnlineRefillOrder2 - Received params:", {
+    console.log("OnlineRefillOrder2 - Received params:", {
       medicineId,
+      passedUnitPrice,
       medicineName,
       dosage,
       genericName,
@@ -58,151 +126,50 @@ const OnlineRefillOrder2 = () => {
       pharmacyName,
       pharmacyAddress,
       readyTime,
-      distanceParam,
       distance,
-      currentStock,
-      passedUnitPrice
+      currentStock
     });
-  }, [medicineId, medicineName, params]);
+  }, [medicineId, passedUnitPrice, params]);
 
   React.useEffect(() => {
     let isMounted = true;
 
-    const fetchUnitPrice = async () => {
-      if (!medicineName || medicineName === "Medicine") {
+    const fetchPrice = async () => {
+      if (!medicineId) {
         if (isMounted) {
-          setUnitPrice(null);
           setPriceMessage("No medicine selected. Please go back and pick a medicine.");
         }
         return;
       }
 
-      setIsLoadingPrice(true);
+      if (isMounted) {
+        setPriceMessage("Fetching latest price...");
+      }
 
-      try {
-        setPriceMessage("Fetching price...");
-        console.log("🔍 Looking for price for medicine:", medicineName);
+      const { price, message } = await fetchMedicinePrice(medicineId);
 
-        // FIRST: Try to fetch price by medicine name
-        const { data: priceData, error: priceError } = await supabase
-          .from('medicine_prices')
-          .select('unit_price')
-          .ilike('medicine_name', `%${medicineName}%`)
-          .limit(1)
-          .maybeSingle();
-
-        console.log("📊 Price query result:", { priceData, priceError });
-
-        if (!priceError && typeof priceData?.unit_price === "number") {
-          console.log("✅ Found price by name:", priceData.unit_price);
-          if (isMounted) {
-            setUnitPrice(priceData.unit_price);
-            setPriceMessage("");
-            setIsLoadingPrice(false);
-          }
-          return;
-        }
-
-        // SECOND: If not found by exact name, try generic name
-        if (genericName) {
-          console.log("🔍 Trying generic name:", genericName);
-          const { data: genericPriceData } = await supabase
-            .from('medicine_prices')
-            .select('unit_price')
-            .ilike('generic_name', `%${genericName}%`)
-            .limit(1)
-            .maybeSingle();
-
-          if (genericPriceData?.unit_price) {
-            console.log("✅ Found price by generic name:", genericPriceData.unit_price);
-            if (isMounted) {
-              setUnitPrice(genericPriceData.unit_price);
-              setPriceMessage(`Using generic price for ${genericName}`);
-              setIsLoadingPrice(false);
-            }
-            return;
-          }
-        }
-
-        // THIRD: Check if passed unit price is valid
-        if (passedUnitPrice > 0) {
-          console.log("📥 Using passed unit price:", passedUnitPrice);
-          if (isMounted) {
-            setUnitPrice(passedUnitPrice);
-            setPriceMessage("");
-            setIsLoadingPrice(false);
-          }
-          return;
-        }
-
-        // If all attempts fail
-        console.warn("❌ No price found for medicine:", medicineName);
-        if (isMounted) {
-          setUnitPrice(null);
-          setPriceMessage("Price not available for this medicine.");
-          setIsLoadingPrice(false);
-        }
-      } catch (error) {
-        console.error("💥 Failed to fetch unit price:", error);
-        if (isMounted) {
-          setUnitPrice(null);
-          setPriceMessage("Unable to fetch price. Please try again later.");
-          setIsLoadingPrice(false);
-        }
+      if (isMounted) {
+        setUnitPrice(price || 0);
+        setPriceMessage(message);
+        console.log("Price fetched:", { price, message });
       }
     };
 
-    fetchUnitPrice();
+    fetchPrice();
 
     return () => {
       isMounted = false;
     };
-  }, [medicineName, genericName, passedUnitPrice]);
+  }, [medicineId]);
   
   const handleContinue = () => {
     if (quantityNum === 0) {
-      Alert.alert("Error", "Please enter a valid quantity");
+      alert("Please enter a valid quantity");
       return;
     }
     
-    if (unitPrice === null || unitPrice <= 0) {
-      Alert.alert(
-        "Price Not Available",
-        "No price found for this medicine. Would you like to:\n\n1. Continue with estimated price (RM 25.00)\n2. Go back and try again",
-        [
-          {
-            text: "Cancel",
-            style: "cancel"
-          },
-          {
-            text: "Use Estimated Price",
-            onPress: () => {
-              const estimatedPrice = 25.00;
-              const paramsToPass: Record<string, string> = {
-                medicineId: medicineId,
-                unitPrice: estimatedPrice.toString(),
-                medicineName,
-                dosage,
-                genericName,
-                pharmacyName,
-                pharmacyAddress,
-                quantity: quantity,
-                totalPrice: (estimatedPrice * quantityNum).toFixed(2),
-                currentStock: currentStock || "0"
-              };
-              
-              if (readyTime) paramsToPass.readyTime = readyTime;
-              if (distance) paramsToPass.distance = distance;
-              if (pharmacyId) paramsToPass.pharmacyId = pharmacyId;
-              
-              router.push({
-                pathname: "/(tabs)/onlineRefillOrder3",
-                params: paramsToPass
-              });
-            }
-          }
-        ]
-      );
+    if (unitPrice <= 0) {
+      alert("Price not available. Please try again later.");
       return;
     }
     
@@ -216,16 +183,16 @@ const OnlineRefillOrder2 = () => {
       pharmacyName,
       pharmacyAddress,
       quantity: quantity,
-      totalPrice: totalPrice.toFixed(2),
-      currentStock: currentStock || "0"
+      totalPrice: totalPrice.toFixed(2)
     };
     
     // Only add optional fields if they exist and are valid
     if (readyTime) paramsToPass.readyTime = readyTime;
     if (distance) paramsToPass.distance = distance;
+    if (currentStock) paramsToPass.currentStock = currentStock;
     if (pharmacyId) paramsToPass.pharmacyId = pharmacyId;
     
-    console.log("📤 Passing to OnlineRefillOrder3:", paramsToPass);
+    console.log("Passing to OnlineRefillOrder3:", paramsToPass);
     
     router.push({
       pathname: "/(tabs)/onlineRefillOrder3",
@@ -261,6 +228,9 @@ const OnlineRefillOrder2 = () => {
             <Text style={styles.medicineName}>
               {medicineName || "Medicine"} {dosage || ""}
             </Text>
+            <Text style={styles.priceDisplay}>
+              {unitPrice > 0 ? `RM ${unitPrice.toFixed(2)} per unit` : "Price loading..."}
+            </Text>
           </View>
         </View>
 
@@ -288,26 +258,6 @@ const OnlineRefillOrder2 = () => {
           </View>
         </View>
 
-        {/* Price Status Banner */}
-        {isLoadingPrice && (
-          <View style={styles.priceStatusBanner}>
-            <Text style={styles.priceStatusBannerText}>
-              ⏳ Fetching price for {medicineName}...
-            </Text>
-          </View>
-        )}
-        
-        {!isLoadingPrice && priceMessage && (
-          <View style={[
-            styles.priceStatusBanner,
-            unitPrice !== null ? styles.priceStatusSuccess : styles.priceStatusWarning
-          ]}>
-            <Text style={styles.priceStatusBannerText}>
-              {unitPrice !== null ? `✅ Price: RM ${unitPrice.toFixed(2)}` : `⚠️ ${priceMessage}`}
-            </Text>
-          </View>
-        )}
-
         {/* Quantity Selection Section */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Select Quantity</Text>
@@ -324,23 +274,14 @@ const OnlineRefillOrder2 = () => {
                 placeholderTextColor="#94A3B8"
                 maxLength={4}
               />
-              
-              {quantityNum > 0 && unitPrice !== null && (
-                <View style={styles.priceBreakdown}>
-                  <Text style={styles.priceBreakdownText}>
-                    {quantity} × RM {unitPrice.toFixed(2)} = 
-                    <Text style={styles.totalPriceText}> RM {totalPrice.toFixed(2)}</Text>
-                  </Text>
-                </View>
+              {quantityNum > 0 && unitPrice > 0 && (
+                <Text style={styles.pricePreview}>
+                  RM {unitPrice.toFixed(2)} × {quantity} = RM {totalPrice.toFixed(2)}
+                </Text>
               )}
-              
-              {quantityNum > 0 && unitPrice === null && (
-                <View style={styles.priceWarning}>
-                  <Text style={styles.priceWarningText}>
-                    Price not available. Total cannot be calculated.
-                  </Text>
-                </View>
-              )}
+              {priceMessage ? (
+                <Text style={styles.priceStatusText}>{priceMessage}</Text>
+              ) : null}
             </View>
             
             {/* Quick Quantity Buttons */}
@@ -431,15 +372,12 @@ const OnlineRefillOrder2 = () => {
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>Unit Price:</Text>
               <View style={styles.summaryValueColumn}>
-                <Text style={[
-                  styles.summaryValue,
-                  unitPrice === null && styles.missingDataText
-                ]}>
-                  {unitPrice !== null ? `RM ${unitPrice.toFixed(2)}` : "Not available"}
+                <Text style={styles.summaryValue}>
+                  {unitPrice > 0 ? `RM ${unitPrice.toFixed(2)}` : "Price not available"}
                 </Text>
-                {priceMessage && unitPrice === null && (
-                  <Text style={styles.priceMessageText}>{priceMessage}</Text>
-                )}
+                {priceMessage ? (
+                  <Text style={styles.priceStatusText}>{priceMessage}</Text>
+                ) : null}
               </View>
             </View>
             
@@ -455,11 +393,8 @@ const OnlineRefillOrder2 = () => {
             {/* Total */}
             <View style={[styles.summaryRow, styles.totalRow]}>
               <Text style={styles.summaryTotalLabel}>Total Amount:</Text>
-              <Text style={[
-                styles.summaryTotalValue,
-                totalPrice === 0 && unitPrice === null && styles.missingDataText
-              ]}>
-                {totalPrice > 0 ? `RM ${totalPrice.toFixed(2)}` : "RM 0.00"}
+              <Text style={styles.summaryTotalValue}>
+                {unitPrice > 0 && totalPrice > 0 ? `RM ${totalPrice.toFixed(2)}` : "RM 0.00"}
               </Text>
             </View>
           </View>
@@ -469,28 +404,22 @@ const OnlineRefillOrder2 = () => {
         <Pressable 
           style={[
             styles.continueButton,
-            (quantityNum === 0 || unitPrice === null || isLoadingPrice) && styles.continueButtonDisabled
+            (quantityNum === 0 || unitPrice <= 0) && styles.continueButtonDisabled
           ]} 
           onPress={handleContinue}
-          disabled={quantityNum === 0 || unitPrice === null || isLoadingPrice}
+          disabled={quantityNum === 0 || unitPrice <= 0}
         >
           <Text style={styles.continueButtonText}>
-            {isLoadingPrice 
-              ? "Loading Price..." 
-              : unitPrice === null 
-                ? "Price Not Available" 
-                : `Continue to Payment - RM ${totalPrice.toFixed(2)}`
-            }
+            Continue to Payment
           </Text>
-          {!isLoadingPrice && unitPrice !== null && (
-            <Image source={forwardIcon} style={styles.arrowIcon} resizeMode="contain" />
-          )}
+          <Image source={forwardIcon} style={styles.arrowIcon} resizeMode="contain" />
         </Pressable>
       </ScrollView>
     </SafeAreaView>
   );
 };
 
+// Styles remain the same...
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -507,7 +436,7 @@ const styles = StyleSheet.create({
   headerSection: {
     flexDirection: "row",
     alignItems: "flex-start",
-    marginBottom: 24,
+    marginBottom: 32,
   },
   backButton: {
     width: 40,
@@ -543,11 +472,17 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: "#64748b",
   },
+  priceDisplay: {
+    fontSize: 14,
+    color: "#0ea5e9",
+    fontWeight: "600",
+    marginTop: 2,
+  },
   progressContainer: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 16,
+    marginBottom: 32,
     paddingHorizontal: 8,
   },
   progressStep: {
@@ -615,27 +550,6 @@ const styles = StyleSheet.create({
     marginHorizontal: 8,
     marginBottom: 20,
   },
-  priceStatusBanner: {
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 20,
-    alignItems: "center",
-  },
-  priceStatusSuccess: {
-    backgroundColor: "#f0fdf4",
-    borderWidth: 1,
-    borderColor: "#bbf7d0",
-  },
-  priceStatusWarning: {
-    backgroundColor: "#fef3c7",
-    borderWidth: 1,
-    borderColor: "#fbbf24",
-  },
-  priceStatusBannerText: {
-    fontSize: 14,
-    fontWeight: "600",
-    textAlign: "center",
-  },
   section: {
     marginBottom: 24,
   },
@@ -677,35 +591,14 @@ const styles = StyleSheet.create({
     fontSize: 16,
     backgroundColor: "#f8fafc",
     color: "#0f172a",
-    marginBottom: 12,
+    marginBottom: 8,
   },
-  priceBreakdown: {
-    backgroundColor: "#f0f9ff",
-    borderRadius: 8,
-    padding: 12,
-    alignItems: "center",
-  },
-  priceBreakdownText: {
-    fontSize: 16,
-    color: "#0369a1",
-    fontWeight: "500",
-  },
-  totalPriceText: {
-    color: "#0ea5e9",
-    fontWeight: "700",
-    fontSize: 18,
-  },
-  priceWarning: {
-    backgroundColor: "#fffbeb",
-    borderRadius: 8,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: "#fde68a",
-  },
-  priceWarningText: {
+  pricePreview: {
     fontSize: 14,
-    color: "#92400e",
-    textAlign: "center",
+    color: "#0ea5e9",
+    fontWeight: "600",
+    marginTop: 8,
+    textAlign: "right",
   },
   quickQuantityContainer: {
     marginTop: 8,
@@ -786,11 +679,6 @@ const styles = StyleSheet.create({
     color: "#ef4444",
     fontWeight: "600",
   },
-  priceMessageText: {
-    fontSize: 12,
-    color: "#f97316",
-    marginTop: 4,
-  },
   summaryDivider: {
     height: 1,
     backgroundColor: "#e2e8f0",
@@ -836,6 +724,12 @@ const styles = StyleSheet.create({
   arrowIcon: {
     width: 16,
     height: 16,
+  },
+  priceStatusText: {
+    fontSize: 12,
+    color: "#f97316",
+    marginTop: 6,
+    textAlign: "right",
   },
 });
 
