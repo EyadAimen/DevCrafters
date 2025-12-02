@@ -1,5 +1,5 @@
 import * as React from "react";
-import {Text, StyleSheet, View, Pressable, Image, ScrollView, ActivityIndicator, Alert} from "react-native";
+import {Text, StyleSheet, View, Pressable, Image, ScrollView, ActivityIndicator} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { supabase } from '../../lib/supabase';
@@ -26,7 +26,6 @@ interface MedicineInfo {
   generic_name: string;
   dosage: string;
   unit_price: number;
-  price_source: 'database' | 'passed' | 'estimated' | 'not_found';
 }
 
 const OnlineRefillOrder = () => {
@@ -135,20 +134,25 @@ const OnlineRefillOrder = () => {
   };
   
   React.useEffect(() => {
+    console.log("OnlineRefillOrder - Received params:", {
+      medicineId,
+      passedMedicineName,
+      passedDosage,
+      passedGenericName,
+      passedUnitPrice,
+      currentStock
+    });
+    
     const fetchData = async () => {
       try {
         setLoading(true);
         
+        // If no medicineId, show error
         if (!medicineId) {
           throw new Error("No medicine selected. Please go back and select a medicine.");
         }
         
-        // 1. Get medicine details from medicines table
-        const { data: medicineData, error: medicineError } = await supabase
-          .from('medicines')
-          .select('medicine_name, generic_name, dosage')
-          .eq('medicine_id', medicineId)
-          .single();
+        let finalMedicineInfo: MedicineInfo;
         
         // Try to fetch fresh medicine data from database
         try {
@@ -193,42 +197,44 @@ const OnlineRefillOrder = () => {
           };
         }
         
-        // 3. Create medicine info object
-        const finalMedicineInfo: MedicineInfo = {
-          medicine_id: medicineId,
-          medicine_name: medicineName,
-          generic_name: genericName,
-          dosage: dosage,
-          unit_price: price,
-          price_source: priceSource
-        };
-        
         setMedicineInfo(finalMedicineInfo);
         
-        // 4. Fetch pharmacies
+        // Fetch pharmacies
         const { data: pharmacyData, error: pharmacyError } = await supabase
           .from('pharmacy')
-          .select('*');
+          .select('*')
+          .order('pharmacy_name');
         
         if (pharmacyError) throw pharmacyError;
         
         if (pharmacyData) {
+          // Calculate distance and ready time for each pharmacy
           const pharmaciesWithDetails = pharmacyData.map((pharmacy: any) => {
-            const distance = calculateDistance(1.4923, 103.7413, pharmacy.latitude, pharmacy.longitude);
+            const distance = calculateDistance(
+              1.4923, 103.7413, // User location (placeholder)
+              pharmacy.latitude,
+              pharmacy.longitude
+            );
+            
+            const ready_time = getReadyTime(distance);
+            
             return {
               ...pharmacy,
+              pharmacy_id: pharmacy.pharmacy_id,
               distance: distance,
-              ready_time: getReadyTime(distance)
+              ready_time: ready_time
             };
           });
           
+          // Sort by distance
           pharmaciesWithDetails.sort((a, b) => (a.distance || 0) - (b.distance || 0));
           setPharmacies(pharmaciesWithDetails);
         }
         
+        setError(null);
       } catch (err: any) {
-        console.error('Error:', err);
-        setError(err.message);
+        console.error('Error fetching data:', err);
+        setError('Failed to load data: ' + err.message);
       } finally {
         setLoading(false);
       }
@@ -243,15 +249,19 @@ const OnlineRefillOrder = () => {
       return;
     }
     
+    // Pass ALL data to next screen
     router.push({
       pathname: "/(tabs)/onlineRefillOrder2",
       params: {
+        // Medicine info
         medicineId: medicineInfo.medicine_id,
         medicineName: medicineInfo.medicine_name,
         dosage: medicineInfo.dosage,
         genericName: medicineInfo.generic_name,
         unitPrice: medicineInfo.unit_price.toString(),
         currentStock: currentStock.toString(),
+        
+        // Pharmacy info
         pharmacyId: selectedPharmacy.pharmacy_id.toString(),
         pharmacyName: selectedPharmacy.pharmacy_name,
         pharmacyAddress: selectedPharmacy.pharmacy_address,
@@ -260,16 +270,32 @@ const OnlineRefillOrder = () => {
       }
     });
   };
-  
+
   const handlePharmacySelect = (pharmacy: Pharmacy) => {
     setSelectedPharmacy(pharmacy);
   };
   
   const formatReadyTime = (pharmacy: Pharmacy) => {
+    // Check if distance is a valid number
     if (typeof pharmacy.distance !== 'number' || isNaN(pharmacy.distance)) {
       return 'Ready in 4 hours';
     }
-    return `${pharmacy.distance.toFixed(1)} km · Ready in ${pharmacy.ready_time}`;
+    
+    const distance = `${pharmacy.distance.toFixed(1)} km`;
+    const readyTime = pharmacy.ready_time || '4 hours';
+    return `${distance} · Ready in ${readyTime}`;
+  };
+  
+  const formatPrice = () => {
+    if (!medicineInfo) return "Loading price...";
+    if (medicineInfo.unit_price <= 0) return "Price not available";
+    return `RM ${medicineInfo.unit_price.toFixed(2)} per unit`;
+  };
+  
+  const formatMedicinePrice = () => {
+    if (!medicineInfo) return "Loading price...";
+    if (medicineInfo.unit_price <= 0) return "Price not available";
+    return `RM ${medicineInfo.unit_price.toFixed(2)} per unit`;
   };
   
   if (loading) {
@@ -277,7 +303,7 @@ const OnlineRefillOrder = () => {
       <SafeAreaView style={styles.container}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#0ea5e9" />
-          <Text style={styles.loadingText}>Loading...</Text>
+          <Text style={styles.loadingText}>Loading pharmacies...</Text>
         </View>
       </SafeAreaView>
     );
@@ -303,26 +329,26 @@ const OnlineRefillOrder = () => {
           <View style={styles.headerSection}>
             <View style={styles.backButtonContainer}>
               <Pressable onPress={() => router.back()}>
-                <Image source={backArrow} style={styles.backIcon} />
+                <Image source={backArrow} style={styles.backIcon} resizeMode="contain" />
               </Pressable>
             </View>
             <View style={styles.headerTextContainer}>
               <Text style={styles.requestRefill}>Request Refill</Text>
-              {medicineInfo && (
+              {medicineInfo ? (
                 <>
                   <Text style={styles.medicineName}>{medicineInfo.medicine_name} {medicineInfo.dosage}</Text>
-                  <Text style={styles.medicinePrice}>
-                    Price: {medicineInfo.unit_price > 0 ? `RM ${medicineInfo.unit_price.toFixed(2)}` : 'Not available'}
-                  </Text>
+                  <Text style={styles.genericName}>{medicineInfo.generic_name || "Generic name not available"}</Text>
+                  <Text style={styles.medicinePrice}>{formatMedicinePrice()}</Text>
                   {currentStock > 0 && (
                     <Text style={styles.currentStock}>Current stock: {currentStock} units</Text>
                   )}
                 </>
+              ) : (
+                <Text style={styles.medicineName}>Loading medicine info...</Text>
               )}
             </View>
           </View>
 
-          {/* PROGRESS STEPS - ADDED THIS SECTION */}
           <View style={styles.progressContainer}>
             <View style={styles.progressStep}>
               <View style={[styles.stepCircle, styles.stepActive]}>
@@ -330,18 +356,14 @@ const OnlineRefillOrder = () => {
               </View>
               <Text style={styles.stepLabelActive}>Pharmacy</Text>
             </View>
-            
             <View style={styles.stepLine} />
-            
             <View style={styles.progressStep}>
               <View style={styles.stepCircle}>
                 <Text style={styles.stepText}>2</Text>
               </View>
               <Text style={styles.stepLabel}>Quantity</Text>
             </View>
-            
             <View style={styles.stepLine} />
-            
             <View style={styles.progressStep}>
               <View style={styles.stepCircle}>
                 <Text style={styles.stepText}>3</Text>
@@ -360,40 +382,79 @@ const OnlineRefillOrder = () => {
                 return (
                   <Pressable 
                     key={pharmacy.pharmacy_id}
-                    style={[styles.pharmacyCard, isSelected && styles.pharmacyCardSelected]}
+                    style={[
+                      styles.pharmacyCard,
+                      isSelected && styles.pharmacyCardSelected
+                    ]} 
                     onPress={() => handlePharmacySelect(pharmacy)}
                   >
-                    <Text style={styles.pharmacyName}>{pharmacy.pharmacy_name}</Text>
-                    <View style={styles.pharmacyInfo}>
-                      <Image source={locationIcon} style={styles.icon} />
-                      <Text style={styles.pharmacyAddress}>{pharmacy.pharmacy_address}</Text>
+                    <View style={styles.pharmacyHeader}>
+                      <Text style={styles.pharmacyName}>{pharmacy.pharmacy_name}</Text>
+                      {/* FIXED: Check if distance is a valid number and less than 1 */}
+                      {typeof pharmacy.distance === 'number' && !isNaN(pharmacy.distance) && pharmacy.distance < 1 && (
+                        <View style={styles.nearestBadge}>
+                          <Text style={styles.nearestBadgeText}>Nearest</Text>
+                        </View>
+                      )}
                     </View>
-                    <Text style={styles.readyTime}>{formatReadyTime(pharmacy)}</Text>
+                    <View style={styles.pharmacyInfo}>
+                      <Image source={locationIcon} style={styles.icon} resizeMode="contain" />
+                      <Text style={styles.pharmacyAddress}>{pharmacy.pharmacy_address || "Address not available"}</Text>
+                    </View>
+                    <View style={styles.readyTimeContainer}>
+                      <Image source={nearestIcon} style={styles.icon} resizeMode="contain" />
+                      <Text style={styles.readyTime}>{formatReadyTime(pharmacy)}</Text>
+                    </View>
                     
+                    {/* Show the fixed medicine price */}
                     {medicineInfo && medicineInfo.unit_price > 0 && (
-                      <Text style={styles.priceText}>
-                        RM {medicineInfo.unit_price.toFixed(2)} per unit
-                      </Text>
+                      <View style={styles.priceContainer}>
+                        <Text style={styles.priceText}>
+                          {formatPrice()}
+                        </Text>
+                      </View>
                     )}
                     
                     {isSelected && (
-                      <Text style={styles.selectedIndicator}>✓ Selected</Text>
+                      <View style={styles.selectedIndicator}>
+                        <Text style={styles.selectedIndicatorText}>✓ Selected</Text>
+                      </View>
                     )}
                   </Pressable>
                 );
               })}
+              
+              {pharmacies.length === 0 && (
+                <View style={styles.noPharmaciesContainer}>
+                  <Text style={styles.noPharmaciesText}>No pharmacies available in your area</Text>
+                </View>
+              )}
             </View>
           </View>
 
+          {selectedPharmacy && medicineInfo && medicineInfo.unit_price > 0 && (
+            <View style={styles.totalPreview}>
+              <Text style={styles.totalPreviewText}>
+                Unit Price: <Text style={styles.totalPreviewPrice}>RM {medicineInfo.unit_price.toFixed(2)}</Text>
+              </Text>
+              <Text style={styles.totalPreviewNote}>
+                Total = RM {medicineInfo.unit_price.toFixed(2)} × Quantity
+              </Text>
+            </View>
+          )}
+
           <Pressable 
-            style={[styles.continueButton, !selectedPharmacy && styles.continueButtonDisabled]}
+            style={[
+              styles.continueButton,
+              !selectedPharmacy && styles.continueButtonDisabled
+            ]} 
             onPress={handleContinue}
             disabled={!selectedPharmacy}
           >
             <Text style={styles.continueButtonText}>
-              {selectedPharmacy ? 'Continue' : 'Select a Pharmacy'}
+              {selectedPharmacy ? 'Continue to Quantity' : 'Select a Pharmacy to Continue'}
             </Text>
-            <Image source={forwardIcon} style={styles.arrowIcon} />
+            <Image source={forwardIcon} style={styles.arrowIcon} resizeMode="contain" />
           </Pressable>
         </View>
       </ScrollView>
@@ -402,20 +463,63 @@ const OnlineRefillOrder = () => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#f8fafc" },
-  scrollView: { flex: 1 },
-  scrollContent: { paddingBottom: 40 },
-  content: { flex: 1, padding: 16 },
-  headerSection: { flexDirection: "row", alignItems: "flex-start", marginBottom: 24 },
-  backButtonContainer: { marginRight: 12, marginTop: 4 },
-  backIcon: { width: 24, height: 24 },
-  headerTextContainer: { flex: 1 },
-  requestRefill: { fontSize: 24, fontWeight: "700", color: "#0f172a", marginBottom: 4 },
-  medicineName: { fontSize: 16, color: "#64748b" },
-  medicinePrice: { fontSize: 14, color: "#0ea5e9", fontWeight: "600", marginTop: 2 },
-  currentStock: { fontSize: 12, color: "#64748b", marginTop: 2 },
-  
-  // Progress Steps Styles - ADDED THESE
+  container: {
+    flex: 1,
+    backgroundColor: "#f8fafc",
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    paddingBottom: 40,
+  },
+  content: {
+    flex: 1,
+    padding: 16,
+  },
+  headerSection: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    marginBottom: 24,
+  },
+  backButtonContainer: {
+    marginRight: 12,
+    marginTop: 4,
+  },
+  backIcon: {
+    width: 24,
+    height: 24,
+  },
+  headerTextContainer: {
+    flex: 1,
+  },
+  requestRefill: {
+    fontSize: 24,
+    fontWeight: "700",
+    color: "#0f172a",
+    marginBottom: 4,
+  },
+  medicineName: {
+    fontSize: 16,
+    color: "#64748b",
+  },
+  genericName: {
+    fontSize: 14,
+    color: "#94a3b8",
+    fontStyle: 'italic',
+  },
+  medicinePrice: {
+    fontSize: 14,
+    color: "#0ea5e9",
+    fontWeight: "600",
+    marginTop: 2,
+  },
+  currentStock: {
+    fontSize: 12,
+    color: "#64748b",
+    marginTop: 2,
+  },
   progressContainer: {
     flexDirection: "row",
     alignItems: "center",
@@ -466,37 +570,128 @@ const styles = StyleSheet.create({
     marginHorizontal: 8,
     marginBottom: 20,
   },
-  
-  section: { marginBottom: 24 },
-  sectionTitle: { fontSize: 18, fontWeight: "600", color: "#0f172a", marginBottom: 16 },
-  pharmacyCards: { gap: 16 },
-  pharmacyCard: { 
-    backgroundColor: "#ffffff", 
-    borderRadius: 16, 
-    padding: 16, 
-    borderWidth: 1, 
-    borderColor: "#e2e8f0" 
+  section: {
+    marginBottom: 24,
   },
-  pharmacyCardSelected: { 
-    borderColor: "#0ea5e9", 
-    backgroundColor: "#f0f9ff", 
-    borderWidth: 2 
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#0f172a",
+    marginBottom: 16,
   },
-  pharmacyName: { fontSize: 16, fontWeight: "600", color: "#0f172a", marginBottom: 8 },
-  pharmacyInfo: { flexDirection: "row", alignItems: "center", marginBottom: 8 },
-  icon: { width: 16, height: 16, marginRight: 8 },
-  pharmacyAddress: { fontSize: 14, color: "#475569", flex: 1 },
-  readyTime: { fontSize: 14, color: "#475569", marginBottom: 8 },
-  priceText: { fontSize: 14, fontWeight: "600", color: "#0ea5e9" },
-  selectedIndicator: { 
-    marginTop: 8, 
-    padding: 6, 
-    backgroundColor: "#d1fae5", 
-    borderRadius: 8, 
+  pharmacyCards: {
+    gap: 16,
+  },
+  pharmacyCard: {
+    backgroundColor: "#ffffff",
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  pharmacyCardSelected: {
+    borderColor: "#0ea5e9",
+    backgroundColor: "#f0f9ff",
+    borderWidth: 2,
+  },
+  pharmacyHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: 12,
+  },
+  pharmacyName: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#0f172a",
+    flex: 1,
+  },
+  nearestBadge: {
+    backgroundColor: "#10b981",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  nearestBadgeText: {
+    fontSize: 10,
+    fontWeight: "600",
+    color: "#ffffff",
+  },
+  pharmacyInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  readyTimeContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 4,
+  },
+  icon: {
+    width: 16,
+    height: 16,
+    marginRight: 8,
+  },
+  pharmacyAddress: {
+    fontSize: 14,
+    color: "#475569",
+    flex: 1,
+  },
+  readyTime: {
+    fontSize: 14,
+    color: "#475569",
+  },
+  priceContainer: {
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: "#e2e8f0",
+  },
+  priceText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#0ea5e9",
+  },
+  selectedIndicator: {
+    marginTop: 8,
+    padding: 6,
+    backgroundColor: "#d1fae5",
+    borderRadius: 8,
     alignSelf: 'flex-start',
+  },
+  selectedIndicatorText: {
     fontSize: 12,
     fontWeight: "600",
-    color: "#065f46"
+    color: "#065f46",
+  },
+  totalPreview: {
+    backgroundColor: "#f0f9ff",
+    borderRadius: 12,
+    padding: 16,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: "#bae6fd",
+  },
+  totalPreviewText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#0f172a",
+    marginBottom: 4,
+  },
+  totalPreviewPrice: {
+    color: "#0ea5e9",
+  },
+  totalPreviewNote: {
+    fontSize: 12,
+    color: "#64748b",
   },
   continueButton: {
     backgroundColor: "#0ea5e9",
@@ -505,54 +700,71 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
-    marginTop: 24
+    marginTop: 24,
+    shadowColor: "#0ea5e9",
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
   },
   continueButtonDisabled: {
-    backgroundColor: "#94a3b8"
+    backgroundColor: "#94a3b8",
+    shadowColor: "#94a3b8",
   },
   continueButtonText: {
     color: "#ffffff",
     fontSize: 16,
     fontWeight: "600",
-    marginRight: 8
+    marginRight: 8,
   },
   arrowIcon: {
     width: 16,
-    height: 16
+    height: 16,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
-    alignItems: 'center'
+    alignItems: 'center',
   },
   loadingText: {
     marginTop: 16,
     fontSize: 16,
-    color: '#64748b'
+    color: '#64748b',
   },
   errorContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20
+    padding: 20,
   },
   errorText: {
     fontSize: 16,
     color: '#ef4444',
     textAlign: 'center',
-    marginBottom: 20
+    marginBottom: 20,
   },
   retryButton: {
     backgroundColor: '#0ea5e9',
     paddingHorizontal: 20,
     paddingVertical: 12,
-    borderRadius: 8
+    borderRadius: 8,
   },
   retryButtonText: {
     color: '#ffffff',
     fontSize: 16,
-    fontWeight: '600'
-  }
+    fontWeight: '600',
+  },
+  noPharmaciesContainer: {
+    padding: 32,
+    alignItems: 'center',
+  },
+  noPharmaciesText: {
+    fontSize: 16,
+    color: '#64748b',
+  },
 });
 
 export default OnlineRefillOrder;
