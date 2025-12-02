@@ -14,6 +14,7 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { supabase } from "../../lib/supabase";
+import * as Location from 'expo-location';
 
 type PharmacyRecord = {
   pharmacy_id: number | string; // Primary key from database (bigint)
@@ -68,6 +69,20 @@ const searchIcon = require("../../assets/searchIcon.png");
 const forwardIcon = require("../../assets/forwardIcon.png");
 const favouriteIcon = require("../../assets/favouriteIcon.png");
 
+// Helper function to calculate distance between two coordinates
+const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+  const R = 6371; // Earth's radius in km
+  const dLat = (lat2 - lat1) * (Math.PI / 180);
+  const dLon = (lon2 - lon1) * (Math.PI / 180);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c; // Distance in km
+
+};
+
 export default function PharmacyLocator() {
   const router = useRouter();
   const [pharmacies, setPharmacies] = useState<Pharmacy[]>([]);
@@ -82,18 +97,18 @@ export default function PharmacyLocator() {
   const [pressedButton, setPressedButton] = useState<{ pharmacyId: string; button: "directions" | "call" } | null>(null);
   const [favoritePharmacyIds, setFavoritePharmacyIds] = useState<Set<string>>(new Set());
   const [togglingFavorite, setTogglingFavorite] = useState<string | null>(null);
+  const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [locationPermission, setLocationPermission] = useState<boolean>(false);
 
-  const mapRecord = (record: PharmacyRecord): Pharmacy => {
+  const mapRecord = (record: PharmacyRecord, currentUserLocation?: { latitude: number; longitude: number } | null): Pharmacy => {
     let servicesArray: string[] = [];
     const servicesValue = record.services;
     if (Array.isArray(servicesValue)) {
       servicesArray = servicesValue;
     } else if (typeof servicesValue === "string") {
-      // Check if it's a comma-separated string
       if (servicesValue.includes(",")) {
         servicesArray = servicesValue.split(",").map((s: string) => s.trim()).filter((s: string) => s.length > 0);
       } else {
-        // Try to parse as JSON first
         try {
           const parsed = JSON.parse(servicesValue);
           servicesArray = Array.isArray(parsed) ? parsed : [servicesValue];
@@ -103,40 +118,135 @@ export default function PharmacyLocator() {
       }
     }
 
+    // Calculate distance if we have user location and pharmacy coordinates
+    // Use passed location parameter, fall back to component state
+    const locationToUse = currentUserLocation || userLocation;
+    let distanceKm = null;
+    if (locationToUse && record.latitude && record.longtitude) {
+      distanceKm = calculateDistance(
+        locationToUse.latitude,
+        locationToUse.longitude,
+        record.latitude,
+        record.longtitude
+      );
+    }
+
+    // Calculate if pharmacy is open based on hours JSON
+    const isOpen = record.google_hours_json
+      ? isPharmacyOpenNow(record.google_hours_json)
+      : typeof record.google_is_open === "boolean"
+        ? record.google_is_open
+        : null;
+
     return {
       id: String(record.pharmacy_id || ""),
       name: record.pharmacy_name || "",
       address: record.pharmacy_address || "",
       phone: record.pharmacy_phone || "Not available",
-      workingHours: "Hours not provided",
+      workingHours: formatWorkingHours(record.google_hours_json),
       services: servicesArray,
       rating: typeof record.google_rating === "number" ? record.google_rating : null,
       ratingCount: typeof record.google_rating_count === "number" ? record.google_rating_count : null,
-      isOpen: typeof record.google_is_open === "boolean" ? record.google_is_open : null,
-      distanceKm: typeof record.google_distance_km === "number" ? record.google_distance_km : null,
+      isOpen: isOpen,
+      distanceKm: distanceKm,
       is247: Boolean(record.google_is_24_7),
       latitude: record.latitude,
-      longitude: record.longtitude // Map from 'longtitude' to 'longitude' in Pharmacy type
+      longitude: record.longtitude
     };
   };
+
+  // Request location permission and get user's current location
+  const getUserLocation = useCallback(async () => {
+    try {
+      let { status } = await Location.requestForegroundPermissionsAsync();
+
+      if (status !== 'granted') {
+        setLocationPermission(false);
+        return;
+      }
+
+      setLocationPermission(true);
+      let location = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+
+      setUserLocation({
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude,
+      });
+
+    } catch (error) {
+      console.error("Error getting location:", error);
+      setLocationPermission(false);
+    }
+  }, []);
+
+  const updateDistances = useCallback(() => {
+    if (!userLocation) return;
+
+    setPharmacies(prevPharmacies =>
+      prevPharmacies.map(pharmacy => {
+        if (!pharmacy.latitude || !pharmacy.longitude) {
+          return pharmacy;
+        }
+
+        const distanceKm = calculateDistance(
+          userLocation.latitude,
+          userLocation.longitude,
+          pharmacy.latitude,
+          pharmacy.longitude
+        );
+
+        return {
+          ...pharmacy,
+          distanceKm
+        };
+      })
+    );
+
+    // Also update favorites
+    setFavorites(prevFavorites =>
+      prevFavorites.map(pharmacy => {
+        if (!pharmacy.latitude || !pharmacy.longitude) {
+          return pharmacy;
+        }
+
+        const distanceKm = calculateDistance(
+          userLocation.latitude,
+          userLocation.longitude,
+          pharmacy.latitude,
+          pharmacy.longitude
+        );
+
+        return {
+          ...pharmacy,
+          distanceKm
+        };
+      })
+    );
+  }, [userLocation]);
 
   const fetchPharmacies = useCallback(async () => {
     try {
       setLoading(true);
+
+      // Get user location once, but don't depend on it for the fetch
+      const currentUserLocation = userLocation || await getUserLocation();
+
       const { data, error } = await supabase
         .from("pharmacy")
-        .select("*")
+        .select("*, google_hours_json")
         .order("pharmacy_name", { ascending: true });
 
-      if (error) {
-        console.error("Supabase error:", error);
-        throw error;
-      }
+      if (error) throw error;
 
       console.log("Fetched pharmacies count:", data?.length || 0);
+
+      // Pass current location to mapRecord
       const mapped = (data || [])
-        .map(mapRecord)
-        .filter((pharmacy) => pharmacy.id && pharmacy.id.length > 0); // Filter out pharmacies without valid IDs
+        .map((record) => mapRecord(record, currentUserLocation)) // Pass location as parameter
+        .filter((pharmacy) => pharmacy.id && pharmacy.id.length > 0);
+
       console.log("Mapped pharmacies count:", mapped.length);
       setPharmacies(mapped);
     } catch (err) {
@@ -178,7 +288,7 @@ export default function PharmacyLocator() {
       setFavoritePharmacyIds(favoriteIds);
 
       const mapped = favoriteRows
-        .map((fav) => (fav.pharmacy ? mapRecord(fav.pharmacy) : null))
+        .map((fav) => (fav.pharmacy ? mapRecord(fav.pharmacy, userLocation) : null))
         .filter((item): item is Pharmacy => Boolean(item));
 
       setFavorites(mapped);
@@ -187,7 +297,67 @@ export default function PharmacyLocator() {
       setFavorites([]);
       setFavoritePharmacyIds(new Set());
     }
-  }, []);
+  }, []); // No dependencies
+
+
+  const isPharmacyOpenNow = (hoursJson: any): boolean | null => {
+    if (!hoursJson || typeof hoursJson !== 'object') return null;
+
+    try {
+      const now = new Date();
+      const currentDay = now.toLocaleString('en-US', { weekday: 'long' }).toLowerCase();
+      const currentTime = now.getHours() * 60 + now.getMinutes(); // minutes since midnight
+
+      const hoursForToday = hoursJson[currentDay];
+      if (!hoursForToday || hoursForToday === "Closed") {
+        return false;
+      }
+
+      // Check if it's "Open 24 hours" or similar
+      if (hoursForToday.includes("24 hours") || hoursForToday.includes("24/7")) {
+        return true;
+      }
+
+      // Parse time like "9:00 AM - 8:00 PM"
+      const [openStr, closeStr] = hoursForToday.split(' - ');
+      if (!openStr || !closeStr) return null;
+
+      const parseTime = (timeStr: string): number => {
+        const [time, modifier] = timeStr.trim().split(' ');
+        let [hours, minutes] = time.split(':').map(Number);
+
+        if (modifier === 'PM' && hours < 12) hours += 12;
+        if (modifier === 'AM' && hours === 12) hours = 0;
+
+        return hours * 60 + (minutes || 0);
+      };
+
+      const openTime = parseTime(openStr);
+      const closeTime = parseTime(closeStr);
+
+      return currentTime >= openTime && currentTime <= closeTime;
+    } catch (error) {
+      console.error("Error parsing hours:", error);
+      return null;
+    }
+  };
+
+  const formatWorkingHours = (hoursJson: any): string => {
+    if (!hoursJson || typeof hoursJson !== 'object') return "Hours not provided";
+
+    try {
+      const now = new Date();
+      const currentDay = now.toLocaleString('en-US', { weekday: 'long' }).toLowerCase();
+      const todayHours = hoursJson[currentDay];
+
+      if (!todayHours) return "Closed today";
+      if (todayHours.includes("24 hours")) return "Open 24 hours";
+
+      return `Open today ${todayHours}`;
+    } catch {
+      return "Hours not provided";
+    }
+  };
 
   const refresh = useCallback(async () => {
     setRefreshing(true);
@@ -196,12 +366,33 @@ export default function PharmacyLocator() {
   }, [fetchFavorites, fetchPharmacies]);
 
   useEffect(() => {
-    refresh();
-  }, [refresh]);
+    let mounted = true;
+
+    const init = async () => {
+      try {
+        // Get location once
+        await getUserLocation();
+
+        if (mounted) {
+          // Fetch data once
+          await fetchPharmacies();
+          await fetchFavorites();
+        }
+      } catch (error) {
+        console.error("Initialization error:", error);
+      }
+    };
+
+    init();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
  const filteredList = useMemo(() => {
   const source = activeTab === "all" ? pharmacies : favorites;
-  
+
   // ✅ Use searchQuery instead of query
   let list = source.filter((pharmacy) =>
     !searchQuery || pharmacy.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -221,6 +412,15 @@ export default function PharmacyLocator() {
       list = list.filter((pharmacy) => pharmacy.is247);
       break;
     default:
+      // Default sorting: show nearest first if we have location
+      if (userLocation) {
+        list = [...list].sort((a, b) => {
+          if (a.distanceKm === null && b.distanceKm === null) return 0;
+          if (a.distanceKm === null) return 1;
+          if (b.distanceKm === null) return -1;
+          return a.distanceKm - b.distanceKm;
+        });
+      }
       break;
   }
 
