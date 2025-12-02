@@ -61,6 +61,16 @@
       ]
     ],
 
+    "plugins": [
+      [
+        "@stripe/stripe-react-native",
+        {
+          "merchantIdentifier": "merchant.com.your.app",
+          "enableGooglePay": true
+        }
+      ]
+    ],
+
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true

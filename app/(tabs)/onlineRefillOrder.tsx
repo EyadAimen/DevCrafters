@@ -32,14 +32,14 @@ interface MedicineInfo {
 const OnlineRefillOrder = () => {
   const router = useRouter();
   const params = useLocalSearchParams();
-  
+
   // Helper to get params safely
   const getParam = (key: string): string => {
     const value = params[key];
     if (Array.isArray(value)) return value[0] || "";
     return value || "";
   };
-  
+
   // Get medicine data from params
   const medicineId = getParam("medicineId");
   const passedMedicineName = getParam("medicineName");
@@ -47,60 +47,60 @@ const OnlineRefillOrder = () => {
   const passedGenericName = getParam("genericName");
   const passedUnitPrice = parseFloat(getParam("unitPrice")) || 0;
   const currentStock = parseInt(getParam("currentStock")) || 0;
-  
+
   const [selectedPharmacy, setSelectedPharmacy] = React.useState<Pharmacy | null>(null);
   const [pharmacies, setPharmacies] = React.useState<Pharmacy[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [medicineInfo, setMedicineInfo] = React.useState<MedicineInfo | null>(null);
-  
+
   const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
     const R = 6371;
     const dLat = (lat2 - lat1) * Math.PI / 180;
     const dLon = (lon2 - lon1) * Math.PI / 180;
-    const a = 
+    const a =
       Math.sin(dLat/2) * Math.sin(dLat/2) +
-      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
       Math.sin(dLon/2) * Math.sin(dLon/2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
     return R * c;
   };
-  
+
   const getReadyTime = (distance: number) => {
     if (distance < 1) return '1 hour';
     if (distance < 3) return '2 hours';
     if (distance < 5) return '3 hours';
     return '4 hours';
   };
-  
+
   React.useEffect(() => {
     const fetchData = async () => {
       try {
         setLoading(true);
-        
+
         if (!medicineId) {
           throw new Error("No medicine selected. Please go back and select a medicine.");
         }
-        
+
         // 1. Get medicine details from medicines table
         const { data: medicineData, error: medicineError } = await supabase
           .from('medicines')
           .select('medicine_name, generic_name, dosage')
           .eq('medicine_id', medicineId)
           .single();
-        
+
         if (medicineError) throw medicineError;
-        
+
         const medicineName = medicineData.medicine_name || passedMedicineName;
         const dosage = medicineData.dosage || passedDosage;
         const genericName = medicineData.generic_name || passedGenericName;
-        
+
         console.log("Looking for price for:", { medicineName, dosage });
-        
+
         // 2. Try to fetch price from medicine_prices table
         let price = passedUnitPrice;
         let priceSource: 'database' | 'passed' | 'estimated' | 'not_found' = 'not_found';
-        
+
         if (medicineName && medicineName !== "Medicine") {
           const { data: priceData, error: priceError } = await supabase
             .from('medicine_prices')
@@ -108,14 +108,14 @@ const OnlineRefillOrder = () => {
             .ilike('medicine_name', `%${medicineName}%`)
             .limit(1)
             .maybeSingle();
-          
+
           if (!priceError && priceData) {
             price = priceData.unit_price;
             priceSource = 'database';
             console.log("✅ Found price in database:", price);
           }
         }
-        
+
         // 3. Create medicine info object
         const finalMedicineInfo: MedicineInfo = {
           medicine_id: medicineId,
@@ -125,16 +125,16 @@ const OnlineRefillOrder = () => {
           unit_price: price,
           price_source: priceSource
         };
-        
+
         setMedicineInfo(finalMedicineInfo);
-        
+
         // 4. Fetch pharmacies
         const { data: pharmacyData, error: pharmacyError } = await supabase
           .from('pharmacy')
           .select('*');
-        
+
         if (pharmacyError) throw pharmacyError;
-        
+
         if (pharmacyData) {
           const pharmaciesWithDetails = pharmacyData.map((pharmacy: any) => {
             const distance = calculateDistance(1.4923, 103.7413, pharmacy.latitude, pharmacy.longitude);
@@ -144,11 +144,11 @@ const OnlineRefillOrder = () => {
               ready_time: getReadyTime(distance)
             };
           });
-          
+
           pharmaciesWithDetails.sort((a, b) => (a.distance || 0) - (b.distance || 0));
           setPharmacies(pharmaciesWithDetails);
         }
-        
+
       } catch (err: any) {
         console.error('Error:', err);
         setError(err.message);
@@ -156,16 +156,16 @@ const OnlineRefillOrder = () => {
         setLoading(false);
       }
     };
-    
+
     fetchData();
   }, [medicineId]);
-  
+
   const handleContinue = () => {
     if (!selectedPharmacy || !medicineInfo) {
       alert("Please select a pharmacy first");
       return;
     }
-    
+
     router.push({
       pathname: "/(tabs)/onlineRefillOrder2",
       params: {
@@ -183,18 +183,18 @@ const OnlineRefillOrder = () => {
       }
     });
   };
-  
+
   const handlePharmacySelect = (pharmacy: Pharmacy) => {
     setSelectedPharmacy(pharmacy);
   };
-  
+
   const formatReadyTime = (pharmacy: Pharmacy) => {
     if (typeof pharmacy.distance !== 'number' || isNaN(pharmacy.distance)) {
       return 'Ready in 4 hours';
     }
     return `${pharmacy.distance.toFixed(1)} km · Ready in ${pharmacy.ready_time}`;
   };
-  
+
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
@@ -205,7 +205,7 @@ const OnlineRefillOrder = () => {
       </SafeAreaView>
     );
   }
-  
+
   if (error) {
     return (
       <SafeAreaView style={styles.container}>
@@ -218,7 +218,7 @@ const OnlineRefillOrder = () => {
       </SafeAreaView>
     );
   }
-  
+
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
@@ -253,18 +253,18 @@ const OnlineRefillOrder = () => {
               </View>
               <Text style={styles.stepLabelActive}>Pharmacy</Text>
             </View>
-            
+
             <View style={styles.stepLine} />
-            
+
             <View style={styles.progressStep}>
               <View style={styles.stepCircle}>
                 <Text style={styles.stepText}>2</Text>
               </View>
               <Text style={styles.stepLabel}>Quantity</Text>
             </View>
-            
+
             <View style={styles.stepLine} />
-            
+
             <View style={styles.progressStep}>
               <View style={styles.stepCircle}>
                 <Text style={styles.stepText}>3</Text>
@@ -275,13 +275,13 @@ const OnlineRefillOrder = () => {
 
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Select Pharmacy</Text>
-            
+
             <View style={styles.pharmacyCards}>
               {pharmacies.map((pharmacy) => {
                 const isSelected = selectedPharmacy?.pharmacy_id === pharmacy.pharmacy_id;
-                
+
                 return (
-                  <Pressable 
+                  <Pressable
                     key={pharmacy.pharmacy_id}
                     style={[styles.pharmacyCard, isSelected && styles.pharmacyCardSelected]}
                     onPress={() => handlePharmacySelect(pharmacy)}
@@ -292,13 +292,13 @@ const OnlineRefillOrder = () => {
                       <Text style={styles.pharmacyAddress}>{pharmacy.pharmacy_address}</Text>
                     </View>
                     <Text style={styles.readyTime}>{formatReadyTime(pharmacy)}</Text>
-                    
+
                     {medicineInfo && medicineInfo.unit_price > 0 && (
                       <Text style={styles.priceText}>
                         RM {medicineInfo.unit_price.toFixed(2)} per unit
                       </Text>
                     )}
-                    
+
                     {isSelected && (
                       <Text style={styles.selectedIndicator}>✓ Selected</Text>
                     )}
@@ -308,7 +308,7 @@ const OnlineRefillOrder = () => {
             </View>
           </View>
 
-          <Pressable 
+          <Pressable
             style={[styles.continueButton, !selectedPharmacy && styles.continueButtonDisabled]}
             onPress={handleContinue}
             disabled={!selectedPharmacy}
@@ -337,7 +337,7 @@ const styles = StyleSheet.create({
   medicineName: { fontSize: 16, color: "#64748b" },
   medicinePrice: { fontSize: 14, color: "#0ea5e9", fontWeight: "600", marginTop: 2 },
   currentStock: { fontSize: 12, color: "#64748b", marginTop: 2 },
-  
+
   // Progress Steps Styles - ADDED THESE
   progressContainer: {
     flexDirection: "row",
@@ -389,21 +389,21 @@ const styles = StyleSheet.create({
     marginHorizontal: 8,
     marginBottom: 20,
   },
-  
+
   section: { marginBottom: 24 },
   sectionTitle: { fontSize: 18, fontWeight: "600", color: "#0f172a", marginBottom: 16 },
   pharmacyCards: { gap: 16 },
-  pharmacyCard: { 
-    backgroundColor: "#ffffff", 
-    borderRadius: 16, 
-    padding: 16, 
-    borderWidth: 1, 
-    borderColor: "#e2e8f0" 
+  pharmacyCard: {
+    backgroundColor: "#ffffff",
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: "#e2e8f0"
   },
-  pharmacyCardSelected: { 
-    borderColor: "#0ea5e9", 
-    backgroundColor: "#f0f9ff", 
-    borderWidth: 2 
+  pharmacyCardSelected: {
+    borderColor: "#0ea5e9",
+    backgroundColor: "#f0f9ff",
+    borderWidth: 2
   },
   pharmacyName: { fontSize: 16, fontWeight: "600", color: "#0f172a", marginBottom: 8 },
   pharmacyInfo: { flexDirection: "row", alignItems: "center", marginBottom: 8 },
@@ -411,11 +411,11 @@ const styles = StyleSheet.create({
   pharmacyAddress: { fontSize: 14, color: "#475569", flex: 1 },
   readyTime: { fontSize: 14, color: "#475569", marginBottom: 8 },
   priceText: { fontSize: 14, fontWeight: "600", color: "#0ea5e9" },
-  selectedIndicator: { 
-    marginTop: 8, 
-    padding: 6, 
-    backgroundColor: "#d1fae5", 
-    borderRadius: 8, 
+  selectedIndicator: {
+    marginTop: 8,
+    padding: 6,
+    backgroundColor: "#d1fae5",
+    borderRadius: 8,
     alignSelf: 'flex-start',
     fontSize: 12,
     fontWeight: "600",

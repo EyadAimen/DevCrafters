@@ -1,549 +1,285 @@
 import * as React from "react";
-import {Text, StyleSheet, View, Pressable, Image, ScrollView, Alert, ActivityIndicator} from "react-native";
+import {
+  Text,
+  StyleSheet,
+  View,
+  Pressable,
+  Image,
+  ScrollView,
+  Alert,
+  ActivityIndicator,
+  TextInput,
+  Modal,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams } from "expo-router";
-import { supabase } from '../../lib/supabase';
+import { supabase } from "../../lib/supabase";
+import {
+  initPaymentSheet,
+  presentPaymentSheet,
+} from "@stripe/stripe-react-native";
 
-// Import your actual images
 const backArrow = require("../../assets/backArrow.png");
 
 const OnlineRefillOrder3 = () => {
   const router = useRouter();
   const params = useLocalSearchParams();
   const [isProcessing, setIsProcessing] = React.useState(false);
-  
-  // Helper function to safely get params
+  const [manualAddress, setManualAddress] = React.useState("");
+  const [isAddressModalVisible, setIsAddressModalVisible] = React.useState(false);
+  const [addressSubmitCallback, setAddressSubmitCallback] = React.useState<(addr: string) => void>(() => {});
+
   const getParam = (key: string): string => {
     const value = params[key];
-    if (Array.isArray(value)) {
-      return value[0] || "";
-    }
+    if (Array.isArray(value)) return value[0] || "";
     return value || "";
   };
-  
-  // Get data from params
+
   const medicineId = getParam("medicineId");
   const medicineName = getParam("medicineName");
-  const dosage = getParam("dosage");
-  const pharmacyId = getParam("pharmacyId");
-  const pharmacyName = getParam("pharmacyName");
   const quantity = getParam("quantity");
   const totalPrice = getParam("totalPrice");
-  const unitPrice = getParam("unitPrice");
-  const currentStock = getParam("currentStock");
-  
-  // Convert to numbers
+  const pharmacyName = getParam("pharmacyName");
+
   const quantityNum = parseInt(quantity) || 0;
-  const unitPriceNum = parseFloat(unitPrice) || 0;
   const totalPriceNum = parseFloat(totalPrice) || 0;
-  const currentStockNum = parseInt(currentStock) || 0;
-  
-  const handlePayment = async () => {
-    console.log("Starting payment process...");
-    
-    // Validate inputs
-    if (!medicineId) {
-      Alert.alert("Error", "Medicine information is missing.");
-      return;
-    }
-    
-    if (quantityNum <= 0) {
-      Alert.alert("Error", "Please enter a valid quantity.");
-      return;
-    }
-    
-    if (totalPriceNum <= 0) {
-      Alert.alert("Error", "Total price must be greater than 0.");
-      return;
-    }
-    
-    setIsProcessing(true);
-    
-    try {
-      // 1. Get current user session
-      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-      
-      if (sessionError || !sessionData.session) {
-        throw new Error("Please login to complete your purchase.");
-      }
-      
-      const userId = sessionData.session.user.id;
-      console.log("User ID:", userId);
-      
-      // 2. Get current medicine stock from database
-      const { data: medicineData, error: medicineError } = await supabase
-        .from('medicines')
-        .select('current_stock')
-        .eq('medicine_id', medicineId)
-        .single();
-      
-      const currentStockBefore = medicineData?.current_stock || currentStockNum;
-      const newStock = currentStockBefore + quantityNum;
-      
-      console.log("Stock update:", {
-        currentStockBefore,
-        quantityNum,
-        newStock
+
+  const getShippingAddress = async (userId: string) => {
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("address")
+      .eq("user_id", userId)
+      .single();
+    if (error) throw error;
+
+    if (!data.address) {
+      return await new Promise<string>((resolve) => {
+        setIsAddressModalVisible(true);
+        const callback = (addr: string) => {
+          setIsAddressModalVisible(false);
+          resolve(addr);
+        };
+        setAddressSubmitCallback(() => callback);
       });
-      
-      // 3. Update medicine stock in medicines table - SIMPLE VERSION
-      const { error: updateError } = await supabase
-        .from('medicines')
-        .update({ current_stock: newStock })
-        .eq('medicine_id', medicineId);
-      
-      if (updateError) {
-        throw new Error(`Failed to update medicine stock: ${updateError.message}`);
-      }
-      
-      console.log("✅ Medicine stock updated!");
-      
-      // 4. Save order to orders table - USING ONLY COLUMNS WE KNOW EXIST
-      const orderData = {
+    }
+
+    return data.address;
+  };
+
+  const saveOrderAfterPayment = async (shippingAddress: string) => {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const userId = sessionData?.session?.user?.id;
+    if (!userId) throw new Error("User not logged in");
+
+    const { error } = await supabase.from("orders").insert([
+      {
         user_id: userId,
-        medicine_id: medicineId,
-        pharmacy_id: pharmacyId || null,
         pharmacy_name: pharmacyName || "Unknown Pharmacy",
-        medicine_name: medicineName || "Unknown Medicine",
-        quantity: quantityNum,
         status: "completed",
         total_amount: totalPriceNum,
-        created_at: new Date().toISOString()
-      };
-      
-      console.log("Saving order data:", orderData);
-      
-      // Try insert WITHOUT .select() first
-      const { error: orderError } = await supabase
-        .from('orders')
-        .insert([orderData]);
-      
-      if (orderError) {
-        console.error("Order save error:", orderError);
-        
-        // Try one more time with minimal data
-        const minimalOrderData = {
-          user_id: userId,
-          medicine_id: medicineId,
-          pharmacy_id: pharmacyId || null,
-          medicine_name: medicineName || "Medicine",
-          quantity: quantityNum,
-          created_at: new Date().toISOString()
-        };
-        
-        console.log("Trying minimal order:", minimalOrderData);
-        
-        const { error: minimalError } = await supabase
-          .from('orders')
-          .insert([minimalOrderData]);
-        
-        if (minimalError) {
-          console.error("Minimal order failed:", minimalError);
-          // Show the exact error
-          Alert.alert(
-            "Order Save Failed",
-            `Error: ${minimalError.message}\n\n` +
-            `Tried to insert: ${JSON.stringify(minimalOrderData, null, 2)}`
-          );
+        quantity: quantityNum,
+        medicine_name: medicineName,
+        shipping_address: shippingAddress,
+        payment_method: "stripe",
+      },
+    ]);
+    if (error) throw error;
+    console.log("✅ Order saved successfully");
+  };
+
+  const updateMedicineStock = async (medicineId: string, qty: number) => {
+    const { data, error } = await supabase
+      .from("medicines")
+      .select("current_stock")
+      .eq("medicine_id", medicineId)
+      .single();
+    if (error) throw error;
+
+    const newStock = (data?.current_stock || 0) + qty;
+
+    const { error: updateError } = await supabase
+      .from("medicines")
+      .update({ current_stock: newStock })
+      .eq("medicine_id", medicineId);
+    if (updateError) throw updateError;
+
+    console.log("✅ Stock updated:", newStock);
+  };
+
+  const handlePayment = async () => {
+    if (quantityNum <= 0 || totalPriceNum <= 0) {
+      Alert.alert("Error", "Invalid order details.");
+      return;
+    }
+
+    setIsProcessing(true);
+
+    try {
+      const amountInCents = Math.round(totalPriceNum * 100);
+      if (amountInCents < 50) throw new Error("Amount too small. Minimum RM 0.50");
+
+      const { data: sessionData } = await supabase.auth.getSession();
+      const userId = sessionData?.session?.user?.id;
+      if (!userId) throw new Error("User not logged in");
+
+      let shippingAddress = await getShippingAddress(userId);
+      if (!shippingAddress) {
+        Alert.alert("Error", "Shipping address is required.");
+        setIsProcessing(false);
+        return;
+      }
+
+      // ✅ Call Edge Function to create PaymentIntent with live keys
+      const { data, error } = await supabase.functions.invoke(
+        "create-payment-intent",
+        {
+          body: JSON.stringify({ amount: amountInCents }),
+          headers: { "Content-Type": "application/json" },
+        }
+      );
+
+      if (error) throw error;
+      if (!data?.clientSecret) throw new Error("Invalid response from payment service.");
+      const clientSecret = data.clientSecret;
+
+      // ✅ Initialize Stripe Payment Sheet (supports cards, GrabPay, etc.)
+      const { error: initError } = await initPaymentSheet({
+        merchantDisplayName: "MindBridge Pharmacy",
+        paymentIntentClientSecret: clientSecret,
+        defaultBillingDetails: { name: "Customer" },
+        // Supported payment methods (card + GrabPay if enabled)
+        paymentMethodTypes: ["card", "grabpay"],
+      });
+
+      if (initError) throw initError;
+
+      // ✅ Present Payment Sheet
+      const paymentResult = await presentPaymentSheet();
+      if (paymentResult.error) {
+        if (paymentResult.error.code === "Canceled") {
+          setIsProcessing(false);
           return;
         }
+        Alert.alert("Payment Failed", paymentResult.error.message || "Payment unsuccessful.");
+        setIsProcessing(false);
+        return;
       }
-      
-      console.log("✅ Order saved to database!");
-      
-      // 5. Show success message
+
+      // ✅ Payment successful
+      await saveOrderAfterPayment(shippingAddress);
+      if (medicineId) await updateMedicineStock(medicineId, quantityNum);
+
       Alert.alert(
-        "✅ SUCCESS! Order Saved to Database",
-        `Your order has been processed!\n\n` +
-        `Medicine: ${medicineName}\n` +
-        `Quantity: ${quantityNum} units\n` +
-        `Total: RM ${totalPriceNum.toFixed(2)}\n` +
-        `Stock updated: ${currentStockBefore} → ${newStock} units\n\n` +
-        `✅ Order saved to 'orders' table\n` +
-        `✅ Medicine stock updated`,
-        [
-          {
-            text: "OK",
-            onPress: () => {
-              // Navigate directly to medicine list
-              router.push("/(tabs)/meds");
-            }
-          }
-        ]
+        "🎉 Payment Successful!",
+        `${medicineName} has been refilled.\nPharmacy: ${pharmacyName}\n\nPayment: RM ${totalPriceNum.toFixed(
+          2
+        )}`,
+        [{ text: "View My Medicines", onPress: () => router.push("/(tabs)/meds") }]
       );
-      
-    } catch (error: any) {
-      console.error("Payment error:", error);
-      Alert.alert(
-        "Error",
-        error.message || "Something went wrong. Please try again."
-      );
+    } catch (err: any) {
+      console.error("🔥 Payment Error:", err);
+      Alert.alert("Payment Error", err.message || "Unexpected error.");
     } finally {
       setIsProcessing(false);
     }
   };
-  
-  const handleBack = () => {
-    // Direct navigation to avoid back issues
-    router.push("/(tabs)/meds");
-  };
-  
-  // Check if payment button should be enabled
-  const isPaymentEnabled = quantityNum > 0 && totalPriceNum > 0 && medicineId;
-  
+
+  const handleBack = () => router.push("/(tabs)/meds");
+  const isPaymentEnabled = quantityNum > 0 && totalPriceNum > 0 && !isProcessing;
+
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
-        {/* Header Section */}
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+      >
         <View style={styles.headerSection}>
           <Pressable onPress={handleBack} style={styles.backButton}>
-            <Image source={backArrow} style={styles.backIcon} resizeMode="contain" />
+            <Image source={backArrow} style={styles.backIcon} />
           </Pressable>
-          <View style={styles.headerTextContainer}>
+          <View>
             <Text style={styles.requestRefill}>Request Refill</Text>
             <Text style={styles.medicineName}>{medicineName || "Medicine"}</Text>
+            <Text style={styles.pharmacyText}>
+              From: {pharmacyName || "Not selected"}
+            </Text>
           </View>
         </View>
 
-        {/* Progress Steps */}
-        <View style={styles.progressContainer}>
-          <View style={styles.progressStep}>
-            <View style={[styles.stepCircle, styles.stepCompleted]}>
-              <Text style={styles.stepTextCompleted}>✓</Text>
-            </View>
-            <Text style={styles.stepLabelCompleted}>Pharmacy</Text>
-          </View>
-          <View style={styles.stepLineCompleted} />
-          <View style={styles.progressStep}>
-            <View style={[styles.stepCircle, styles.stepCompleted]}>
-              <Text style={styles.stepTextCompleted}>✓</Text>
-            </View>
-            <Text style={styles.stepLabelCompleted}>Quantity</Text>
-          </View>
-          <View style={styles.stepLineCompleted} />
-          <View style={styles.progressStep}>
-            <View style={[styles.stepCircle, styles.stepActive]}>
-              <Text style={styles.stepTextActive}>3</Text>
-            </View>
-            <Text style={styles.stepLabelActive}>Payment</Text>
-          </View>
-        </View>
-
-        {/* Order Summary */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Order Summary</Text>
-          
-          <View style={styles.summaryCard}>
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Medicine:</Text>
-              <Text style={styles.summaryValue}>{medicineName || "N/A"}</Text>
-            </View>
-            
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Quantity:</Text>
-              <Text style={styles.summaryValue}>{quantityNum} units</Text>
-            </View>
-            
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Unit Price:</Text>
-              <Text style={styles.summaryValue}>RM {unitPriceNum.toFixed(2)}</Text>
-            </View>
-            
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Total Price:</Text>
-              <Text style={[styles.summaryValue, styles.highlightText]}>
-                RM {totalPriceNum.toFixed(2)}
-              </Text>
-            </View>
-            
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Pharmacy:</Text>
-              <Text style={styles.summaryValue}>{pharmacyName || "Not specified"}</Text>
-            </View>
-            
-            {pharmacyId ? (
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Pharmacy ID:</Text>
-                <Text style={styles.summaryValue}>{pharmacyId}</Text>
-              </View>
-            ) : null}
-            
-            <View style={styles.summaryDivider} />
-            
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Stock Update:</Text>
-              <Text style={[styles.summaryValue, styles.stockUpdateText]}>
-                {currentStockNum} + {quantityNum} = {currentStockNum + quantityNum} units
-              </Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Payment Button */}
-        <Pressable 
-          style={[
-            styles.paymentButton,
-            (!isPaymentEnabled || isProcessing) && styles.paymentButtonDisabled
-          ]} 
+        <Pressable
+          style={[styles.paymentButton, !isPaymentEnabled && styles.paymentButtonDisabled]}
           onPress={handlePayment}
-          disabled={!isPaymentEnabled || isProcessing}
+          disabled={!isPaymentEnabled}
         >
           {isProcessing ? (
             <View style={styles.processingRow}>
-              <ActivityIndicator color="#ffffff" size="small" />
-              <Text style={styles.paymentButtonText}>Processing...</Text>
+              <ActivityIndicator color="#fff" />
+              <Text style={styles.paymentButtonText}>Processing…</Text>
             </View>
           ) : (
-            <Text style={styles.paymentButtonText}>
-              {isPaymentEnabled 
-                ? `Pay RM ${totalPriceNum.toFixed(2)} & Save Order` 
-                : 'Complete order details'
-              }
-            </Text>
+            <Text style={styles.paymentButtonText}>Pay RM {totalPriceNum.toFixed(2)}</Text>
           )}
         </Pressable>
-        
-        {/* Cancel Button */}
-        <Pressable 
-          style={[
-            styles.cancelButton,
-            isProcessing && styles.cancelButtonDisabled
-          ]} 
-          onPress={handleBack}
-          disabled={isProcessing}
-        >
+
+        <Pressable style={styles.cancelButton} onPress={handleBack} disabled={isProcessing}>
           <Text style={styles.cancelButtonText}>Cancel Order</Text>
         </Pressable>
       </ScrollView>
+
+      {/* Modal for manual address */}
+      <Modal visible={isAddressModalVisible} transparent animationType="fade">
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Enter Shipping Address</Text>
+            <TextInput
+              placeholder="Shipping Address"
+              style={styles.modalInput}
+              value={manualAddress}
+              onChangeText={setManualAddress}
+            />
+            <Pressable
+              style={styles.modalButton}
+              onPress={() => {
+                if (!manualAddress.trim()) {
+                  Alert.alert("Error", "Address cannot be empty");
+                  return;
+                }
+                addressSubmitCallback(manualAddress.trim());
+                setManualAddress("");
+              }}
+            >
+              <Text style={styles.modalButtonText}>Save Address</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#f8fafc",
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    flexGrow: 1,
-    padding: 16,
-    paddingBottom: 40,
-  },
-  headerSection: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    marginBottom: 32,
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: "#ffffff",
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 12,
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  backIcon: {
-    width: 20,
-    height: 20,
-  },
-  headerTextContainer: {
-    flex: 1,
-  },
-  requestRefill: {
-    fontSize: 24,
-    fontWeight: "700",
-    color: "#0f172a",
-    marginBottom: 4,
-  },
-  medicineName: {
-    fontSize: 16,
-    color: "#64748b",
-  },
-  progressContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 24,
-    paddingHorizontal: 8,
-  },
-  progressStep: {
-    alignItems: "center",
-    flex: 1,
-  },
-  stepCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: "#f1f5f9",
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 8,
-  },
-  stepCompleted: {
-    backgroundColor: "#0ea5e9",
-  },
-  stepActive: {
-    backgroundColor: "#0ea5e9",
-  },
-  stepText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#64748b",
-  },
-  stepTextCompleted: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#ffffff",
-  },
-  stepTextActive: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#ffffff",
-  },
-  stepLabel: {
-    fontSize: 12,
-    color: "#64748b",
-    textAlign: "center",
-  },
-  stepLabelCompleted: {
-    fontSize: 12,
-    color: "#0ea5e9",
-    fontWeight: "600",
-    textAlign: "center",
-  },
-  stepLabelActive: {
-    fontSize: 12,
-    color: "#0ea5e9",
-    fontWeight: "600",
-    textAlign: "center",
-  },
-  stepLine: {
-    flex: 1,
-    height: 2,
-    backgroundColor: "#e2e8f0",
-    marginHorizontal: 8,
-    marginBottom: 20,
-  },
-  stepLineCompleted: {
-    flex: 1,
-    height: 2,
-    backgroundColor: "#0ea5e9",
-    marginHorizontal: 8,
-    marginBottom: 20,
-  },
-  section: {
-    marginBottom: 24,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: "#0f172a",
-    marginBottom: 16,
-  },
-  summaryCard: {
-    backgroundColor: "#ffffff",
-    borderRadius: 20,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  summaryRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    marginBottom: 12,
-  },
-  summaryLabel: {
-    fontSize: 14,
-    color: "#64748b",
-    flex: 1,
-  },
-  summaryValue: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: "#0f172a",
-    flex: 2,
-    textAlign: "right",
-  },
-  highlightText: {
-    color: "#0ea5e9",
-    fontWeight: "600",
-  },
-  stockUpdateText: {
-    color: "#10b981",
-    fontWeight: "600",
-  },
-  summaryDivider: {
-    height: 1,
-    backgroundColor: "#e2e8f0",
-    marginVertical: 16,
-  },
-  paymentButton: {
-    backgroundColor: "#0ea5e9",
-    borderRadius: 14,
-    padding: 16,
-    alignItems: "center",
-    marginTop: 24,
-    shadowColor: "#0ea5e9",
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  paymentButtonDisabled: {
-    backgroundColor: "#cbd5e1",
-    shadowColor: "#cbd5e1",
-  },
-  paymentButtonText: {
-    color: "#ffffff",
-    fontSize: 16,
-    fontWeight: "600",
-  },
-  processingRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  cancelButton: {
-    backgroundColor: "#f8fafc",
-    borderRadius: 14,
-    padding: 16,
-    alignItems: "center",
-    marginTop: 12,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-  },
-  cancelButtonDisabled: {
-    opacity: 0.5,
-  },
-  cancelButtonText: {
-    color: "#64748b",
-    fontSize: 16,
-    fontWeight: "600",
-  },
+  container: { flex: 1, backgroundColor: "#fff" },
+  scrollView: { flex: 1 },
+  scrollContent: { paddingBottom: 40 },
+  headerSection: { flexDirection: "row", alignItems: "center", padding: 15 },
+  backButton: { paddingRight: 10 },
+  backIcon: { width: 24, height: 24 },
+  requestRefill: { fontSize: 16, color: "#888" },
+  medicineName: { fontSize: 22, fontWeight: "bold" },
+  pharmacyText: { fontSize: 14, color: "#555", marginTop: 4 },
+  paymentButton: { backgroundColor: "#2196F3", padding: 15, margin: 20, marginTop: 15, borderRadius: 10, alignItems: "center" },
+  paymentButtonDisabled: { opacity: 0.5 },
+  paymentButtonText: { color: "#fff", fontSize: 16, fontWeight: "bold" },
+  processingRow: { flexDirection: "row", gap: 10, alignItems: "center" },
+  cancelButton: { alignItems: "center", padding: 12, marginHorizontal: 20 },
+  cancelButtonText: { color: "#888", fontSize: 16 },
+
+  modalContainer: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", alignItems: "center" },
+  modalContent: { width: "85%", backgroundColor: "#fff", borderRadius: 10, padding: 20 },
+  modalTitle: { fontSize: 18, fontWeight: "bold", marginBottom: 15 },
+  modalInput: { borderWidth: 1, borderColor: "#ccc", borderRadius: 8, padding: 10, marginBottom: 15 },
+  modalButton: { backgroundColor: "#2196F3", padding: 12, borderRadius: 8, alignItems: "center" },
+  modalButtonText: { color: "#fff", fontWeight: "bold", fontSize: 16 },
 });
 
 export default OnlineRefillOrder3;
