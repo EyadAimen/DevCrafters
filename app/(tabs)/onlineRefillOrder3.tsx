@@ -229,20 +229,6 @@ const OnlineRefillOrder3 = () => {
           </View>
         </View>
 
-        {/* Simple Instructions */}
-        <View style={styles.instructionsCard}>
-          <Text style={styles.instructionsTitle}>What will happen:</Text>
-          <Text style={styles.instructionsText}>1. Update medicine stock in 'medicines' table</Text>
-          <Text style={styles.instructionsText}>2. Save order to 'orders' table with:</Text>
-          <Text style={styles.instructionsText}>   • userid (your ID)</Text>
-          <Text style={styles.instructionsText}>   • pharmacy_name</Text>
-          <Text style={styles.instructionsText}>   • medicine_name</Text>
-          <Text style={styles.instructionsText}>   • quantity</Text>
-          <Text style={styles.instructionsText}>   • status: "completed"</Text>
-          <Text style={styles.instructionsText}>   • total_amount</Text>
-          <Text style={styles.instructionsText}>   • created_at (timestamp)</Text>
-        </View>
-
         {/* Order Summary */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Order Summary</Text>
@@ -456,25 +442,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#0ea5e9",
     marginHorizontal: 8,
     marginBottom: 20,
-  },
-  instructionsCard: {
-    backgroundColor: "#f0f9ff",
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 24,
-    borderWidth: 1,
-    borderColor: "#bae6fd",
-  },
-  instructionsTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#0369a1",
-    marginBottom: 8,
-  },
-  instructionsText: {
-    fontSize: 14,
-    color: "#0c4a6e",
-    marginBottom: 4,
   },
   section: {
     marginBottom: 24,

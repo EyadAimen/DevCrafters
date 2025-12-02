@@ -1,5 +1,5 @@
 import * as React from "react";
-import {Text, StyleSheet, View, Pressable, Image, TextInput, ScrollView} from "react-native";
+import {Text, StyleSheet, View, Pressable, Image, TextInput, ScrollView, Alert} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { supabase } from "../../lib/supabase";
@@ -127,7 +127,8 @@ const OnlineRefillOrder2 = () => {
       pharmacyAddress,
       readyTime,
       distance,
-      currentStock
+      currentStock,
+      passedUnitPrice
     });
   }, [medicineId, passedUnitPrice, params]);
 
@@ -160,11 +161,52 @@ const OnlineRefillOrder2 = () => {
     return () => {
       isMounted = false;
     };
-  }, [medicineId]);
+  }, [medicineName, genericName, passedUnitPrice]);
   
   const handleContinue = () => {
     if (quantityNum === 0) {
-      alert("Please enter a valid quantity");
+      Alert.alert("Error", "Please enter a valid quantity");
+      return;
+    }
+    
+    if (unitPrice === null || unitPrice <= 0) {
+      Alert.alert(
+        "Price Not Available",
+        "No price found for this medicine. Would you like to:\n\n1. Continue with estimated price (RM 25.00)\n2. Go back and try again",
+        [
+          {
+            text: "Cancel",
+            style: "cancel"
+          },
+          {
+            text: "Use Estimated Price",
+            onPress: () => {
+              const estimatedPrice = 25.00;
+              const paramsToPass: Record<string, string> = {
+                medicineId: medicineId,
+                unitPrice: estimatedPrice.toString(),
+                medicineName,
+                dosage,
+                genericName,
+                pharmacyName,
+                pharmacyAddress,
+                quantity: quantity,
+                totalPrice: (estimatedPrice * quantityNum).toFixed(2),
+                currentStock: currentStock || "0"
+              };
+              
+              if (readyTime) paramsToPass.readyTime = readyTime;
+              if (distance) paramsToPass.distance = distance;
+              if (pharmacyId) paramsToPass.pharmacyId = pharmacyId;
+              
+              router.push({
+                pathname: "/(tabs)/onlineRefillOrder3",
+                params: paramsToPass
+              });
+            }
+          }
+        ]
+      );
       return;
     }
     
@@ -183,16 +225,16 @@ const OnlineRefillOrder2 = () => {
       pharmacyName,
       pharmacyAddress,
       quantity: quantity,
-      totalPrice: totalPrice.toFixed(2)
+      totalPrice: totalPrice.toFixed(2),
+      currentStock: currentStock || "0"
     };
     
     // Only add optional fields if they exist and are valid
     if (readyTime) paramsToPass.readyTime = readyTime;
     if (distance) paramsToPass.distance = distance;
-    if (currentStock) paramsToPass.currentStock = currentStock;
     if (pharmacyId) paramsToPass.pharmacyId = pharmacyId;
     
-    console.log("Passing to OnlineRefillOrder3:", paramsToPass);
+    console.log("📤 Passing to OnlineRefillOrder3:", paramsToPass);
     
     router.push({
       pathname: "/(tabs)/onlineRefillOrder3",
@@ -258,6 +300,26 @@ const OnlineRefillOrder2 = () => {
           </View>
         </View>
 
+        {/* Price Status Banner */}
+        {isLoadingPrice && (
+          <View style={styles.priceStatusBanner}>
+            <Text style={styles.priceStatusBannerText}>
+              ⏳ Fetching price for {medicineName}...
+            </Text>
+          </View>
+        )}
+        
+        {!isLoadingPrice && priceMessage && (
+          <View style={[
+            styles.priceStatusBanner,
+            unitPrice !== null ? styles.priceStatusSuccess : styles.priceStatusWarning
+          ]}>
+            <Text style={styles.priceStatusBannerText}>
+              {unitPrice !== null ? `✅ Price: RM ${unitPrice.toFixed(2)}` : `⚠️ ${priceMessage}`}
+            </Text>
+          </View>
+        )}
+
         {/* Quantity Selection Section */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Select Quantity</Text>
@@ -279,9 +341,6 @@ const OnlineRefillOrder2 = () => {
                   RM {unitPrice.toFixed(2)} × {quantity} = RM {totalPrice.toFixed(2)}
                 </Text>
               )}
-              {priceMessage ? (
-                <Text style={styles.priceStatusText}>{priceMessage}</Text>
-              ) : null}
             </View>
             
             {/* Quick Quantity Buttons */}
@@ -375,9 +434,9 @@ const OnlineRefillOrder2 = () => {
                 <Text style={styles.summaryValue}>
                   {unitPrice > 0 ? `RM ${unitPrice.toFixed(2)}` : "Price not available"}
                 </Text>
-                {priceMessage ? (
-                  <Text style={styles.priceStatusText}>{priceMessage}</Text>
-                ) : null}
+                {priceMessage && unitPrice === null && (
+                  <Text style={styles.priceMessageText}>{priceMessage}</Text>
+                )}
               </View>
             </View>
             
@@ -410,9 +469,16 @@ const OnlineRefillOrder2 = () => {
           disabled={quantityNum === 0 || unitPrice <= 0}
         >
           <Text style={styles.continueButtonText}>
-            Continue to Payment
+            {isLoadingPrice 
+              ? "Loading Price..." 
+              : unitPrice === null 
+                ? "Price Not Available" 
+                : `Continue to Payment - RM ${totalPrice.toFixed(2)}`
+            }
           </Text>
-          <Image source={forwardIcon} style={styles.arrowIcon} resizeMode="contain" />
+          {!isLoadingPrice && unitPrice !== null && (
+            <Image source={forwardIcon} style={styles.arrowIcon} resizeMode="contain" />
+          )}
         </Pressable>
       </ScrollView>
     </SafeAreaView>
@@ -436,7 +502,7 @@ const styles = StyleSheet.create({
   headerSection: {
     flexDirection: "row",
     alignItems: "flex-start",
-    marginBottom: 32,
+    marginBottom: 24,
   },
   backButton: {
     width: 40,
@@ -482,7 +548,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 32,
+    marginBottom: 16,
     paddingHorizontal: 8,
   },
   progressStep: {
@@ -550,6 +616,27 @@ const styles = StyleSheet.create({
     marginHorizontal: 8,
     marginBottom: 20,
   },
+  priceStatusBanner: {
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 20,
+    alignItems: "center",
+  },
+  priceStatusSuccess: {
+    backgroundColor: "#f0fdf4",
+    borderWidth: 1,
+    borderColor: "#bbf7d0",
+  },
+  priceStatusWarning: {
+    backgroundColor: "#fef3c7",
+    borderWidth: 1,
+    borderColor: "#fbbf24",
+  },
+  priceStatusBannerText: {
+    fontSize: 14,
+    fontWeight: "600",
+    textAlign: "center",
+  },
   section: {
     marginBottom: 24,
   },
@@ -591,14 +678,35 @@ const styles = StyleSheet.create({
     fontSize: 16,
     backgroundColor: "#f8fafc",
     color: "#0f172a",
-    marginBottom: 8,
+    marginBottom: 12,
   },
-  pricePreview: {
-    fontSize: 14,
+  priceBreakdown: {
+    backgroundColor: "#f0f9ff",
+    borderRadius: 8,
+    padding: 12,
+    alignItems: "center",
+  },
+  priceBreakdownText: {
+    fontSize: 16,
+    color: "#0369a1",
+    fontWeight: "500",
+  },
+  totalPriceText: {
     color: "#0ea5e9",
-    fontWeight: "600",
-    marginTop: 8,
-    textAlign: "right",
+    fontWeight: "700",
+    fontSize: 18,
+  },
+  priceWarning: {
+    backgroundColor: "#fffbeb",
+    borderRadius: 8,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "#fde68a",
+  },
+  priceWarningText: {
+    fontSize: 14,
+    color: "#92400e",
+    textAlign: "center",
   },
   quickQuantityContainer: {
     marginTop: 8,
@@ -679,6 +787,11 @@ const styles = StyleSheet.create({
     color: "#ef4444",
     fontWeight: "600",
   },
+  priceMessageText: {
+    fontSize: 12,
+    color: "#f97316",
+    marginTop: 4,
+  },
   summaryDivider: {
     height: 1,
     backgroundColor: "#e2e8f0",
@@ -724,12 +837,6 @@ const styles = StyleSheet.create({
   arrowIcon: {
     width: 16,
     height: 16,
-  },
-  priceStatusText: {
-    fontSize: 12,
-    color: "#f97316",
-    marginTop: 6,
-    textAlign: "right",
   },
 });
 
