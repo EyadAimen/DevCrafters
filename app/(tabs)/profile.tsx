@@ -102,10 +102,12 @@ const Profile: React.FC = () => {
 
         {/* Settings */}
         <View style={styles.settingsContainer}>
+
           <SettingRow
-            title="Medication Reminders"
-            subtitle="Get notified for doses"
-            icon={require("../../assets/profileNoti.png")}
+            title="Order History"
+            subtitle="View your past orders"
+            icon={require("../../assets/profileMedicalHis.png")}
+            onPress={() => router.push("/orderHistory")}
           />
           <SettingRow
             title="Personal Information"
