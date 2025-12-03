@@ -10,7 +10,8 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  View
+  View,
+  Platform,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { supabase } from "../../lib/supabase";
@@ -156,33 +157,62 @@ export default function PharmacyLocator() {
   };
 
   // Request location permission and get user's current location
-  const getUserLocation = useCallback(async () => {
+  const getUserLocation = useCallback(async (useCached = true) => {
     try {
-      let { status } = await Location.requestForegroundPermissionsAsync();
+      // If we already have location and using cache, return it
+      if (useCached && userLocation) {
+        return userLocation;
+      }
 
-      if (status !== 'granted') {
-        setLocationPermission(false);
-        return;
+      // Check if permission already granted
+      const { status: existingStatus } = await Location.getForegroundPermissionsAsync();
+
+      if (existingStatus !== 'granted') {
+        const { status: requestedStatus } = await Location.requestForegroundPermissionsAsync();
+        if (requestedStatus !== 'granted') {
+          setLocationPermission(false);
+          return null;
+        }
       }
 
       setLocationPermission(true);
-      let location = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
+
+      // Get last known location first (faster)
+      const lastLocation = await Location.getLastKnownPositionAsync();
+      if (lastLocation) {
+        const coords = {
+          latitude: lastLocation.coords.latitude,
+          longitude: lastLocation.coords.longitude,
+        };
+        setUserLocation(coords);
+        return coords;
+      }
+
+      // If no last known location, get fresh with lower accuracy for speed
+      const location = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Lowest, // Fastest option
+        timeout: 5000, // Timeout after 5 seconds
       });
 
-      setUserLocation({
+      const coords = {
         latitude: location.coords.latitude,
         longitude: location.coords.longitude,
-      });
+      };
+
+      setUserLocation(coords);
+      return coords;
 
     } catch (error) {
       console.error("Error getting location:", error);
       setLocationPermission(false);
+      return null;
     }
-  }, []);
+  }, [userLocation]);
 
   const updateDistances = useCallback(() => {
     if (!userLocation) return;
+
+    console.log("Updating distances with user location:", userLocation);
 
     setPharmacies(prevPharmacies =>
       prevPharmacies.map(pharmacy => {
@@ -197,6 +227,7 @@ export default function PharmacyLocator() {
           pharmacy.longitude
         );
 
+        console.log(`Updated distance for ${pharmacy.name}: ${distanceKm} km`);
         return {
           ...pharmacy,
           distanceKm
@@ -204,7 +235,6 @@ export default function PharmacyLocator() {
       })
     );
 
-    // Also update favorites
     setFavorites(prevFavorites =>
       prevFavorites.map(pharmacy => {
         if (!pharmacy.latitude || !pharmacy.longitude) {
@@ -370,14 +400,21 @@ export default function PharmacyLocator() {
 
     const init = async () => {
       try {
-        // Get location once
-        await getUserLocation();
+        // Start fetching pharmacies immediately without waiting for location
+        await fetchPharmacies();
 
-        if (mounted) {
-          // Fetch data once
-          await fetchPharmacies();
-          await fetchFavorites();
-        }
+        // Get location in background
+        getUserLocation(false).then(() => {
+          if (mounted) {
+            // Once location is available, update distances
+            updateDistances();
+            // Refresh favorites with new location
+            fetchFavorites();
+          }
+        }).catch(error => {
+          console.error("Location fetch error:", error);
+        });
+
       } catch (error) {
         console.error("Initialization error:", error);
       }
