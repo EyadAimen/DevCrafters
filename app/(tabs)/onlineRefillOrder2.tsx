@@ -8,6 +8,53 @@ import { supabase } from "../../lib/supabase";
 const backArrow = require("../../assets/backArrow.png");
 const forwardIcon = require("../../assets/forwardIcon.png");
 
+// Helper function to check if medicine stock is sufficient at a pharmacy
+const checkMedicineStock = async (pharmacyId: string, medicineId: string, requestedQuantity: number) => {
+  try {
+    // First, get the reference_id from the medicines table using the medicine_id
+    const { data: medicineData, error: medicineError } = await supabase
+      .from('medicines')
+      .select('reference_id')
+      .eq('medicine_id', medicineId)
+      .maybeSingle();
+
+    if (medicineError || !medicineData?.reference_id) {
+      console.error('Error finding medicine reference_id:', medicineError);
+      return { isAvailable: false, availableStock: 0, error: `Could not find medicine reference_id: ${medicineError?.message}` };
+    }
+
+    const referenceId = medicineData.reference_id;
+
+    // Now use the reference_id to check stock in pharmacy_medicine table
+    const { data: stockData, error } = await supabase
+      .from('pharmacy_medicine')
+      .select('stock')
+      .eq('pharmacy_id', pharmacyId)
+      .eq('reference_id', referenceId)
+      .maybeSingle();
+
+    if (error) {
+      console.error('Error checking medicine stock:', error);
+      return { isAvailable: false, availableStock: 0, error: error.message };
+    }
+
+    const availableStock = stockData?.stock || 0;
+    const isAvailable = availableStock >= requestedQuantity;
+
+    return {
+      isAvailable,
+      availableStock,
+      error: null,
+      message: isAvailable
+        ? `Stock available: ${availableStock} units`
+        : `Insufficient stock. Available: ${availableStock}, Requested: ${requestedQuantity}`
+    };
+  } catch (error: any) {
+    console.error('Unexpected error checking stock:', error);
+    return { isAvailable: false, availableStock: 0, error: error.message };
+  }
+};
+
 // Helper function to fetch medicine price
 const fetchMedicinePrice = async (medicineId: string) => {
   try {
@@ -162,17 +209,39 @@ const OnlineRefillOrder2 = () => {
     };
   }, [medicineId]);
   
-  const handleContinue = () => {
+  const handleContinue = async () => {
     if (quantityNum === 0) {
       alert("Please enter a valid quantity");
       return;
     }
-    
+
     if (unitPrice <= 0) {
       alert("Price not available. Please try again later.");
       return;
     }
-    
+
+    // Check if pharmacy stock is sufficient before proceeding
+    if (!pharmacyId) {
+      alert("Pharmacy information is missing. Please go back and select a pharmacy.");
+      return;
+    }
+
+    console.log("Checking pharmacy stock for:", {
+      pharmacyId,
+      medicineId,
+      quantity: quantityNum
+    });
+
+    const stockCheck = await checkMedicineStock(pharmacyId, medicineId, quantityNum);
+
+    if (!stockCheck.isAvailable) {
+      console.log("Stock check failed:", stockCheck);
+      alert(`Insufficient stock at pharmacy!\n\nAvailable: ${stockCheck.availableStock} units\nRequested: ${quantityNum} units\n\nPlease select a different pharmacy or reduce quantity.`);
+      return;
+    }
+
+    console.log("Stock check passed:", stockCheck.message);
+
     // Pass data to next screen
     const paramsToPass: Record<string, string> = {
       medicineId: medicineId,
@@ -185,15 +254,15 @@ const OnlineRefillOrder2 = () => {
       quantity: quantity,
       totalPrice: totalPrice.toFixed(2)
     };
-    
+
     // Only add optional fields if they exist and are valid
     if (readyTime) paramsToPass.readyTime = readyTime;
     if (distance) paramsToPass.distance = distance;
     if (currentStock) paramsToPass.currentStock = currentStock;
     if (pharmacyId) paramsToPass.pharmacyId = pharmacyId;
-    
+
     console.log("Passing to OnlineRefillOrder3:", paramsToPass);
-    
+
     router.push({
       pathname: "/(tabs)/onlineRefillOrder3",
       params: paramsToPass
