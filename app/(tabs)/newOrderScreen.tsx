@@ -107,23 +107,30 @@ const NewOrderScreen = () => {
 
       setMedicines(mappedMedicines);
 
-      if (user && mappedMedicines.length > 0) {
+      if (user) {
+        // Load all cart items for this user from the current pharmacy
         const medicineIds = mappedMedicines.map(item => item.id);
-        const { data: cartData, error: cartError } = await supabase
-          .from("cart_item")
-          .select("pharmacy_medicine_id, quantity")
-          .eq("user_id", user.id)
-          .in("pharmacy_medicine_id", medicineIds);
+        
+        if (medicineIds.length > 0) {
+          const { data: cartData, error: cartError } = await supabase
+            .from("cart_item")
+            .select("pharmacy_medicine_id, quantity")
+            .eq("user_id", user.id)
+            .in("pharmacy_medicine_id", medicineIds);
 
-        if (cartError) throw cartError;
+          if (cartError) throw cartError;
 
-        const nextCart: Record<string, number> = {};
-        (cartData ?? []).forEach(row => {
-          if (row.pharmacy_medicine_id) {
-            nextCart[String(row.pharmacy_medicine_id)] = Number(row.quantity) || 0;
-          }
-        });
-        setCartQuantities(nextCart);
+          const nextCart: Record<string, number> = {};
+          (cartData ?? []).forEach(row => {
+            if (row.pharmacy_medicine_id) {
+              nextCart[String(row.pharmacy_medicine_id)] = Number(row.quantity) || 0;
+            }
+          });
+          console.log("🛒 Loaded", Object.keys(nextCart).length, "cart items for current pharmacy");
+          setCartQuantities(nextCart);
+        } else {
+          setCartQuantities({});
+        }
       } else {
         setCartQuantities({});
       }
@@ -198,11 +205,52 @@ const NewOrderScreen = () => {
         });
         if (showAlert && isRemoving) Alert.alert("Removed Medicine Successfully");
       } else {
-        await supabase.from("cart_item").upsert({
-          user_id: userId,
-          pharmacy_medicine_id: medicineId,
-          quantity: nextQuantity
-        }, { onConflict: "user_id,pharmacy_medicine_id" });
+        // Check if item already exists in cart
+        const { data: existingItem, error: checkError } = await supabase
+          .from("cart_item")
+          .select("cart_id, pharmacy_medicine_id, quantity")
+          .eq("user_id", userId)
+          .eq("pharmacy_medicine_id", medicineId)
+          .maybeSingle();
+
+        if (checkError) {
+          console.error("❌ Error checking cart_item:", checkError);
+          throw checkError;
+        }
+
+        let result;
+        if (existingItem) {
+          // Update existing item
+          const { data, error: updateError } = await supabase
+            .from("cart_item")
+            .update({ quantity: nextQuantity })
+            .eq("cart_id", existingItem.cart_id)
+            .select();
+
+          if (updateError) {
+            console.error("❌ Error updating cart_item:", updateError);
+            throw updateError;
+          }
+          result = data;
+        } else {
+          // Insert new item
+          const { data, error: insertError } = await supabase
+            .from("cart_item")
+            .insert({
+              user_id: userId,
+              pharmacy_medicine_id: medicineId,
+              quantity: nextQuantity
+            })
+            .select();
+
+          if (insertError) {
+            console.error("❌ Error inserting cart_item:", insertError);
+            throw insertError;
+          }
+          result = data;
+        }
+
+        console.log("✅ Successfully saved to cart_item:", result);
         setCartQuantities(prev => ({ ...prev, [medicineId]: nextQuantity }));
         if (showAlert && isAdding) Alert.alert("Added Medicine Successfully");
       }
@@ -233,8 +281,15 @@ const NewOrderScreen = () => {
       Alert.alert("Cart empty", "Add at least one medication to continue.");
       return;
     }
-    // Navigate to the new payment screen
-    router.replace("/handlePaymentCart");
+    // Navigate to the payment screen with pharmacy information
+    router.replace({
+      pathname: "/handlePaymentCart",
+      params: {
+        pharmacyId: pharmacyId || "",
+        pharmacyName: pharmacyName || "",
+        pharmacyAddress: pharmacyAddress || "",
+      },
+    });
   };
 
   const renderMedicineCard = (item: PharmacyMedicine) => {
