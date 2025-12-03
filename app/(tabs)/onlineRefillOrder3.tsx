@@ -21,6 +21,53 @@ import {
 
 const backArrow = require("../../assets/backArrow.png");
 
+// Helper function to check if medicine stock is sufficient at a pharmacy
+const checkMedicineStock = async (pharmacyId: string, medicineId: string, requestedQuantity: number) => {
+  try {
+    // First, get the reference_id from the medicines table using the medicine_id
+    const { data: medicineData, error: medicineError } = await supabase
+      .from('medicines')
+      .select('reference_id')
+      .eq('medicine_id', medicineId)
+      .maybeSingle();
+
+    if (medicineError || !medicineData?.reference_id) {
+      console.error('Error finding medicine reference_id:', medicineError);
+      return { isAvailable: false, availableStock: 0, error: `Could not find medicine reference_id: ${medicineError?.message}` };
+    }
+
+    const referenceId = medicineData.reference_id;
+
+    // Now use the reference_id to check stock in pharmacy_medicine table
+    const { data: stockData, error } = await supabase
+      .from('pharmacy_medicine')
+      .select('stock')
+      .eq('pharmacy_id', pharmacyId)
+      .eq('reference_id', referenceId)
+      .maybeSingle();
+
+    if (error) {
+      console.error('Error checking medicine stock:', error);
+      return { isAvailable: false, availableStock: 0, error: error.message };
+    }
+
+    const availableStock = stockData?.stock || 0;
+    const isAvailable = availableStock >= requestedQuantity;
+
+    return {
+      isAvailable,
+      availableStock,
+      error: null,
+      message: isAvailable
+        ? `Stock available: ${availableStock} units`
+        : `Insufficient stock. Available: ${availableStock}, Requested: ${requestedQuantity}`
+    };
+  } catch (error: any) {
+    console.error('Unexpected error checking stock:', error);
+    return { isAvailable: false, availableStock: 0, error: error.message };
+  }
+};
+
 const OnlineRefillOrder3 = () => {
   const router = useRouter();
   const params = useLocalSearchParams();
@@ -40,6 +87,7 @@ const OnlineRefillOrder3 = () => {
   const quantity = getParam("quantity");
   const totalPrice = getParam("totalPrice");
   const unitPrice = parseFloat(getParam("unitPrice")) || 0;
+  const pharmacyId = getParam("pharmacyId");
   const pharmacyName = getParam("pharmacyName");
   const currentStock = getParam("currentStock");
 
@@ -168,6 +216,25 @@ const OnlineRefillOrder3 = () => {
     if (quantityNum <= 0 || totalPriceNum <= 0) {
       Alert.alert("Error", "Invalid order details.");
       return;
+    }
+
+    // Stock check before proceeding with payment
+    if (pharmacyId && medicineId && quantityNum > 0) {
+      console.log("Checking final stock availability before payment");
+      const stockCheck = await checkMedicineStock(pharmacyId, medicineId, quantityNum);
+
+      if (!stockCheck.isAvailable) {
+        console.log("Stock check failed before payment:", stockCheck);
+        Alert.alert(
+          "Stock Issue Detected",
+          `The pharmacy stock has changed since you selected quantity.\n\nAvailable: ${stockCheck.availableStock} units\nRequested: ${quantityNum} units\n\nPlease go back and select a different quantity or pharmacy.`
+        );
+        return;
+      }
+
+      console.log("Final stock check passed:", stockCheck.message);
+    } else {
+      console.log("No pharmacy/medicines information available for stock check");
     }
 
     setIsProcessing(true);

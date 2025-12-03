@@ -315,7 +315,7 @@ const NewOrderScreen = () => {
     }
 
     // Navigate to analytics page and remove current page from stack
-    router.replace("/");
+    router.replace("/handlePayment");
   };
 
   const renderMedicineCard = (item: PharmacyMedicine) => {
