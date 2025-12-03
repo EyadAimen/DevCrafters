@@ -36,15 +36,9 @@ const NewOrderScreen = () => {
   const router = useRouter();
   const params = useLocalSearchParams();
 
-  const pharmacyId = Array.isArray(params.pharmacyId)
-    ? params.pharmacyId[0]
-    : params.pharmacyId;
-  const pharmacyName = Array.isArray(params.pharmacyName)
-    ? params.pharmacyName[0]
-    : params.pharmacyName;
-  const pharmacyAddress = Array.isArray(params.pharmacyAddress)
-    ? params.pharmacyAddress[0]
-    : params.pharmacyAddress;
+  const pharmacyId = Array.isArray(params.pharmacyId) ? params.pharmacyId[0] : params.pharmacyId;
+  const pharmacyName = Array.isArray(params.pharmacyName) ? params.pharmacyName[0] : params.pharmacyName;
+  const pharmacyAddress = Array.isArray(params.pharmacyAddress) ? params.pharmacyAddress[0] : params.pharmacyAddress;
 
   const [medicines, setMedicines] = useState<PharmacyMedicine[]>([]);
   const [cartQuantities, setCartQuantities] = useState<Record<string, number>>({});
@@ -57,6 +51,7 @@ const NewOrderScreen = () => {
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [editingQuantity, setEditingQuantity] = useState<{ id: string; value: string } | null>(null);
 
+  // Fetch pharmacy inventory + cart
   const fetchInventory = useCallback(async () => {
     if (!pharmacyId) {
       setLoading(false);
@@ -80,14 +75,9 @@ const NewOrderScreen = () => {
         .eq("pharmacy_id", pharmacyId)
         .order("id", { ascending: true });
 
-      if (inventoryError) {
-        throw inventoryError;
-      }
+      if (inventoryError) throw inventoryError;
 
-      const referenceIds = (inventoryData ?? [])
-        .map(item => item.reference_id)
-        .filter(Boolean);
-
+      const referenceIds = (inventoryData ?? []).map(item => item.reference_id).filter(Boolean);
       let referenceMap = new Map<string, any>();
 
       if (referenceIds.length > 0) {
@@ -96,18 +86,13 @@ const NewOrderScreen = () => {
           .select("drug_id, medicine_name, generic_name, dosage, category")
           .in("drug_id", referenceIds);
 
-        if (referenceError) {
-          throw referenceError;
-        }
+        if (referenceError) throw referenceError;
 
-        referenceMap = new Map(
-          (referenceData ?? []).map(ref => [String(ref.drug_id), ref])
-        );
+        referenceMap = new Map((referenceData ?? []).map(ref => [String(ref.drug_id), ref]));
       }
 
       const mappedMedicines: PharmacyMedicine[] = (inventoryData ?? []).map(item => {
         const reference = referenceMap.get(String(item.reference_id));
-
         return {
           id: String(item.id),
           referenceId: String(item.reference_id),
@@ -130,9 +115,7 @@ const NewOrderScreen = () => {
           .eq("user_id", user.id)
           .in("pharmacy_medicine_id", medicineIds);
 
-        if (cartError) {
-          throw cartError;
-        }
+        if (cartError) throw cartError;
 
         const nextCart: Record<string, number> = {};
         (cartData ?? []).forEach(row => {
@@ -146,10 +129,7 @@ const NewOrderScreen = () => {
       }
     } catch (error) {
       console.error("Error loading pharmacy medicines:", error);
-      Alert.alert(
-        "Unable to load medicines",
-        "Please pull to refresh or try again later."
-      );
+      Alert.alert("Unable to load medicines", "Please pull to refresh or try again later.");
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -165,157 +145,96 @@ const NewOrderScreen = () => {
     fetchInventory();
   };
 
-  const cartCount = useMemo(() => {
-    return Object.values(cartQuantities).reduce((sum, qty) => sum + qty, 0);
-  }, [cartQuantities]);
+  const cartCount = useMemo(() => Object.values(cartQuantities).reduce((sum, qty) => sum + qty, 0), [cartQuantities]);
 
-  const cartTotal = useMemo(() => {
-    return Object.entries(cartQuantities).reduce((sum, [id, qty]) => {
-      const medicine = medicines.find(item => item.id === id);
-      if (!medicine) return sum;
-      return sum + medicine.price * qty;
-    }, 0);
-  }, [cartQuantities, medicines]);
+  const cartTotal = useMemo(() => Object.entries(cartQuantities).reduce((sum, [id, qty]) => {
+    const medicine = medicines.find(item => item.id === id);
+    if (!medicine) return sum;
+    return sum + medicine.price * qty;
+  }, 0), [cartQuantities, medicines]);
 
   const categories = useMemo(() => {
-    const unique = new Set(
-      medicines
-        .map(item => item.category?.trim())
-        .filter(category => category && category.length > 0)
-    );
+    const unique = new Set(medicines.map(item => item.category?.trim()).filter(Boolean));
     return ["All", ...Array.from(unique)];
   }, [medicines]);
 
   const filteredMedicines = useMemo(() => {
     const text = search.trim().toLowerCase();
     return medicines.filter(item => {
-      const matchesSearch =
-        !text ||
-        item.name.toLowerCase().includes(text) ||
-        item.genericName.toLowerCase().includes(text);
-      const matchesCategory =
-        selectedCategory === "All" || item.category === selectedCategory;
+      const matchesSearch = !text || item.name.toLowerCase().includes(text) || item.genericName.toLowerCase().includes(text);
+      const matchesCategory = selectedCategory === "All" || item.category === selectedCategory;
       return matchesSearch && matchesCategory;
     });
   }, [medicines, search, selectedCategory]);
 
   const requireAuthentication = useCallback(() => {
-    if (userId) {
-      return true;
-    }
-    Alert.alert(
-      "Login required",
-      "Please sign in to manage your cart.",
-      [{ text: "OK" }]
-    );
+    if (userId) return true;
+    Alert.alert("Login required", "Please sign in to manage your cart.", [{ text: "OK" }]);
     return false;
   }, [userId]);
 
-  const modifyCart = useCallback(
-    async (medicineId: string, nextQuantity: number, showAlert: boolean = false) => {
-      if (!requireAuthentication()) {
-        return;
+  const modifyCart = useCallback(async (medicineId: string, nextQuantity: number, showAlert = false) => {
+    if (!requireAuthentication()) return;
+    const medicine = medicines.find(item => item.id === medicineId);
+    if (!medicine) return;
+    if (nextQuantity > medicine.stock) {
+      Alert.alert("Insufficient stock", `Only ${medicine.stock} unit${medicine.stock === 1 ? "" : "s"} available for ${medicine.name}.`);
+      return;
+    }
+
+    const wasInCart = (cartQuantities[medicineId] ?? 0) > 0;
+    const isAdding = !wasInCart && nextQuantity > 0;
+    const isRemoving = wasInCart && nextQuantity <= 0;
+
+    try {
+      setSyncingId(medicineId);
+
+      if (nextQuantity <= 0) {
+        await supabase.from("cart_item").delete().eq("user_id", userId).eq("pharmacy_medicine_id", medicineId);
+        setCartQuantities(prev => {
+          const next = { ...prev };
+          delete next[medicineId];
+          return next;
+        });
+        if (showAlert && isRemoving) Alert.alert("Removed Medicine Successfully");
+      } else {
+        await supabase.from("cart_item").upsert({
+          user_id: userId,
+          pharmacy_medicine_id: medicineId,
+          quantity: nextQuantity
+        }, { onConflict: "user_id,pharmacy_medicine_id" });
+        setCartQuantities(prev => ({ ...prev, [medicineId]: nextQuantity }));
+        if (showAlert && isAdding) Alert.alert("Added Medicine Successfully");
       }
+    } catch (error) {
+      console.error("Error updating cart:", error);
+      Alert.alert("Unable to update cart", "Please try again in a moment.");
+    } finally {
+      setSyncingId(null);
+    }
+  }, [medicines, requireAuthentication, userId, cartQuantities]);
 
-      const medicine = medicines.find(item => item.id === medicineId);
-      if (!medicine) {
-        return;
-      }
+  const handleQuantityInput = useCallback(async (medicineId: string, inputValue: string) => {
+    const numValue = parseInt(inputValue, 10);
+    if (isNaN(numValue) || numValue < 0) return;
+    const medicine = medicines.find(item => item.id === medicineId);
+    if (!medicine) return;
+    const finalQuantity = Math.min(numValue, medicine.stock);
+    await modifyCart(medicineId, finalQuantity, true);
+    setEditingQuantity(null);
+  }, [medicines, modifyCart]);
 
-      if (nextQuantity > medicine.stock) {
-        Alert.alert(
-          "Insufficient stock",
-          `Only ${medicine.stock} unit${
-            medicine.stock === 1 ? "" : "s"
-          } available for ${medicine.name}.`
-        );
-        return;
-      }
-
-      const wasInCart = (cartQuantities[medicineId] ?? 0) > 0;
-      const isAdding = !wasInCart && nextQuantity > 0;
-      const isRemoving = wasInCart && nextQuantity <= 0;
-
-      try {
-        setSyncingId(medicineId);
-
-        if (nextQuantity <= 0) {
-          await supabase
-            .from("cart_item")
-            .delete()
-            .eq("user_id", userId)
-            .eq("pharmacy_medicine_id", medicineId);
-
-          setCartQuantities(prev => {
-            const next = { ...prev };
-            delete next[medicineId];
-            return next;
-          });
-
-          if (showAlert && isRemoving) {
-            Alert.alert("Removed Medicine Successfully");
-          }
-        } else {
-          await supabase
-            .from("cart_item")
-            .upsert(
-              {
-                user_id: userId,
-                pharmacy_medicine_id: medicineId,
-                quantity: nextQuantity
-              },
-              { onConflict: "user_id,pharmacy_medicine_id" }
-            );
-
-          setCartQuantities(prev => ({
-            ...prev,
-            [medicineId]: nextQuantity
-          }));
-
-          if (showAlert && isAdding) {
-            Alert.alert("Added Medicine Successfully");
-          }
-        }
-      } catch (error) {
-        console.error("Error updating cart:", error);
-        Alert.alert("Unable to update cart", "Please try again in a moment.");
-      } finally {
-        setSyncingId(null);
-      }
-    },
-    [medicines, requireAuthentication, userId, cartQuantities]
-  );
-
-  const handleQuantityInput = useCallback(
-    async (medicineId: string, inputValue: string) => {
-      const numValue = parseInt(inputValue, 10);
-      if (isNaN(numValue) || numValue < 0) {
-        return;
-      }
-      const medicine = medicines.find(item => item.id === medicineId);
-      if (!medicine) return;
-      const finalQuantity = Math.min(numValue, medicine.stock);
-      await modifyCart(medicineId, finalQuantity, true);
-      setEditingQuantity(null);
-    },
-    [medicines, modifyCart]
-  );
-
-  const removeFromCart = useCallback(
-    async (medicineId: string) => {
-      await modifyCart(medicineId, 0, true);
-    },
-    [modifyCart]
-  );
+  const removeFromCart = useCallback(async (medicineId: string) => {
+    await modifyCart(medicineId, 0, true);
+  }, [modifyCart]);
 
   const handleProceedToPayment = () => {
     if (cartCount === 0) {
       Alert.alert("Cart empty", "Add at least one medication to continue.");
       return;
     }
-
-    // Navigate to analytics page and remove current page from stack
-    router.replace("/handlePayment");
+    // Navigate to the new payment screen
+    router.replace("/handlePaymentCart");
   };
 
   const renderMedicineCard = (item: PharmacyMedicine) => {
@@ -324,10 +243,7 @@ const NewOrderScreen = () => {
     const loadingThisCard = syncingId === item.id;
 
     return (
-      <View
-        key={item.id}
-        style={[styles.card, inCart ? styles.cardSelected : undefined]}
-      >
+      <View key={item.id} style={[styles.card, inCart ? styles.cardSelected : undefined]}>
         <View style={styles.cardHeader}>
           <View style={styles.iconWrapper}>
             <View style={styles.iconCircle}>
@@ -338,15 +254,11 @@ const NewOrderScreen = () => {
             <View style={styles.titleRow}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.medicineName}>{item.name}</Text>
-                <Text style={styles.medicineSubtitle}>
-                  {item.genericName} • {item.dosage}
-                </Text>
+                <Text style={styles.medicineSubtitle}>{item.genericName} • {item.dosage}</Text>
               </View>
               <View style={styles.priceWrapper}>
                 <Text style={styles.price}>RM {item.price.toFixed(2)}</Text>
-                <Text style={styles.stockText}>
-                  Stock: {item.stock.toString()}
-                </Text>
+                <Text style={styles.stockText}>Stock: {item.stock}</Text>
               </View>
             </View>
             <View style={styles.categoryChip}>
@@ -359,77 +271,36 @@ const NewOrderScreen = () => {
           {inCart ? (
             <View style={styles.quantityControls}>
               <View style={styles.quantityRow}>
-                <TouchableOpacity
-                  style={styles.qtyButton}
-                  onPress={() => modifyCart(item.id, quantity - 1, false)}
-                  disabled={loadingThisCard}
-                  activeOpacity={0.8}
-                >
+                <TouchableOpacity style={styles.qtyButton} onPress={() => modifyCart(item.id, quantity - 1, false)} disabled={loadingThisCard} activeOpacity={0.8}>
                   <Text style={styles.qtyButtonText}>−</Text>
                 </TouchableOpacity>
                 {editingQuantity?.id === item.id ? (
                   <TextInput
                     style={styles.qtyInput}
                     value={editingQuantity.value}
-                    onChangeText={(text) => {
-                      const num = text.replace(/[^0-9]/g, '');
-                      setEditingQuantity({ id: item.id, value: num });
-                    }}
-                    onBlur={() => {
-                      if (editingQuantity) {
-                        handleQuantityInput(item.id, editingQuantity.value);
-                      }
-                    }}
-                    onSubmitEditing={() => {
-                      if (editingQuantity) {
-                        handleQuantityInput(item.id, editingQuantity.value);
-                      }
-                    }}
+                    onChangeText={text => setEditingQuantity({ id: item.id, value: text.replace(/[^0-9]/g, '') })}
+                    onBlur={() => editingQuantity && handleQuantityInput(item.id, editingQuantity.value)}
+                    onSubmitEditing={() => editingQuantity && handleQuantityInput(item.id, editingQuantity.value)}
                     keyboardType="numeric"
                     selectTextOnFocus
                     autoFocus
                   />
                 ) : (
-                  <TouchableOpacity
-                    onPress={() => setEditingQuantity({ id: item.id, value: quantity.toString() })}
-                    activeOpacity={0.7}
-                  >
+                  <TouchableOpacity onPress={() => setEditingQuantity({ id: item.id, value: quantity.toString() })} activeOpacity={0.7}>
                     <Text style={styles.qtyText}>{loadingThisCard ? "…" : quantity}</Text>
                   </TouchableOpacity>
                 )}
-                <TouchableOpacity
-                  style={styles.qtyButton}
-                  onPress={() => modifyCart(item.id, quantity + 1, false)}
-                  disabled={loadingThisCard || quantity >= item.stock}
-                  activeOpacity={0.8}
-                >
+                <TouchableOpacity style={styles.qtyButton} onPress={() => modifyCart(item.id, quantity + 1, false)} disabled={loadingThisCard || quantity >= item.stock} activeOpacity={0.8}>
                   <Text style={styles.qtyButtonText}>+</Text>
                 </TouchableOpacity>
               </View>
-              <TouchableOpacity
-                style={styles.cancelButton}
-                onPress={() => removeFromCart(item.id)}
-                disabled={loadingThisCard}
-                activeOpacity={0.8}
-              >
+              <TouchableOpacity style={styles.cancelButton} onPress={() => removeFromCart(item.id)} disabled={loadingThisCard} activeOpacity={0.8}>
                 <Text style={styles.cancelButtonText}>Cancel</Text>
               </TouchableOpacity>
             </View>
           ) : (
-            <TouchableOpacity
-              style={[
-                styles.addButton,
-                item.stock === 0 ? styles.addButtonDisabled : undefined
-              ]}
-              onPress={() => modifyCart(item.id, 1, true)}
-              disabled={item.stock === 0 || loadingThisCard}
-              activeOpacity={0.85}
-            >
-              {loadingThisCard ? (
-                <ActivityIndicator size="small" color="#ffffff" />
-              ) : (
-                <Text style={styles.addButtonText}>+ Add to cart</Text>
-              )}
+            <TouchableOpacity style={[styles.addButton, item.stock === 0 ? styles.addButtonDisabled : undefined]} onPress={() => modifyCart(item.id, 1, true)} disabled={item.stock === 0 || loadingThisCard} activeOpacity={0.85}>
+              {loadingThisCard ? <ActivityIndicator size="small" color="#ffffff" /> : <Text style={styles.addButtonText}>+ Add to cart</Text>}
             </TouchableOpacity>
           )}
         </View>
@@ -440,32 +311,20 @@ const NewOrderScreen = () => {
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView
-        contentContainerStyle={[
-          styles.container,
-          { paddingBottom: cartCount > 0 ? 200 : 120 }
-        ]}
+        contentContainerStyle={[styles.container, { paddingBottom: cartCount > 0 ? 200 : 120 }]}
         keyboardShouldPersistTaps="handled"
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
-        }
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
         showsVerticalScrollIndicator={false}
       >
+        {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity
-            onPress={() => router.push("/pharmacyLocator")}
-            style={styles.backButton}
-            activeOpacity={0.7}
-          >
+          <TouchableOpacity onPress={() => router.push("/pharmacyLocator")} style={styles.backButton} activeOpacity={0.7}>
             <Image source={backArrow} style={styles.backIcon} resizeMode="contain" />
           </TouchableOpacity>
-
           <View style={{ flex: 1 }}>
             <Text style={styles.headerTitle}>New Order</Text>
-            <Text style={styles.headerSubtitle}>
-              {pharmacyName ?? "Choose a pharmacy"}
-            </Text>
+            <Text style={styles.headerSubtitle}>{pharmacyName ?? "Choose a pharmacy"}</Text>
           </View>
-
           <View style={styles.cartIconWrapper}>
             <Image source={cartIcon} style={styles.cartIcon} resizeMode="contain" />
             {cartCount > 0 && (
@@ -476,6 +335,7 @@ const NewOrderScreen = () => {
           </View>
         </View>
 
+        {/* Pharmacy Info */}
         <View style={styles.pharmacyCard}>
           <View style={styles.pharmacyIconWrapper}>
             <View style={styles.iconCircle}>
@@ -484,12 +344,11 @@ const NewOrderScreen = () => {
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.pharmacyName}>{pharmacyName ?? "No pharmacy selected"}</Text>
-            <Text style={styles.pharmacyAddress}>
-              {pharmacyAddress ?? "Select a pharmacy from Find Pharmacies"}
-            </Text>
+            <Text style={styles.pharmacyAddress}>{pharmacyAddress ?? "Select a pharmacy from Find Pharmacies"}</Text>
           </View>
         </View>
 
+        {/* Search */}
         <View style={[styles.searchWrapper, isSearchFocused && styles.searchWrapperFocused]}>
           <Image source={searchIcon} style={styles.searchIcon} resizeMode="contain" />
           <TextInput
@@ -503,42 +362,27 @@ const NewOrderScreen = () => {
           />
         </View>
 
+        {/* Categories */}
         {categories.length > 1 && (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.categories}
-          >
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categories}>
             {categories.map(category => {
               const selected = category === selectedCategory;
               return (
-                <TouchableOpacity
-                  key={category}
-                  style={[styles.categoryPill, selected && styles.categoryPillActive]}
-                  onPress={() => setSelectedCategory(category)}
-                  activeOpacity={0.8}
-                >
-                  <Text
-                    style={[
-                      styles.categoryPillText,
-                      selected && styles.categoryPillTextActive
-                    ]}
-                  >
-                    {category}
-                  </Text>
+                <TouchableOpacity key={category} style={[styles.categoryPill, selected && styles.categoryPillActive]} onPress={() => setSelectedCategory(category)} activeOpacity={0.8}>
+                  <Text style={[styles.categoryPillText, selected && styles.categoryPillTextActive]}>{category}</Text>
                 </TouchableOpacity>
               );
             })}
           </ScrollView>
         )}
 
+        {/* Section Header */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Available medicines</Text>
-          <Text style={styles.sectionSubtitle}>
-            {loading ? "..." : `${filteredMedicines.length} item${filteredMedicines.length === 1 ? "" : "s"}`}
-          </Text>
+          <Text style={styles.sectionSubtitle}>{loading ? "..." : `${filteredMedicines.length} item${filteredMedicines.length === 1 ? "" : "s"}`}</Text>
         </View>
 
+        {/* Medicine List */}
         {loading ? (
           <View style={styles.loadingState}>
             <ActivityIndicator size="large" color="#2563EB" />
@@ -547,15 +391,12 @@ const NewOrderScreen = () => {
         ) : filteredMedicines.length === 0 ? (
           <View style={styles.emptyState}>
             <Text style={styles.emptyTitle}>No medicines found</Text>
-            <Text style={styles.emptySubtitle}>
-              Try adjusting your search or category filters.
-            </Text>
+            <Text style={styles.emptySubtitle}>Try adjusting your search or category filters.</Text>
           </View>
-        ) : (
-          filteredMedicines.map(renderMedicineCard)
-        )}
+        ) : filteredMedicines.map(renderMedicineCard)}
       </ScrollView>
 
+      {/* Cart Summary & Checkout */}
       {cartCount > 0 && (
         <View style={styles.summaryCard}>
           <View style={styles.summaryHeader}>
@@ -564,25 +405,18 @@ const NewOrderScreen = () => {
           <View style={styles.summaryRow}>
             <View style={{ flex: 1 }}>
               <Text style={styles.summaryLabel}>Total Items</Text>
-              <Text style={styles.summarySubtitle}>
-                {cartCount} item{cartCount === 1 ? "" : "s"} in cart
-              </Text>
+              <Text style={styles.summarySubtitle}>{cartCount} item{cartCount === 1 ? "" : "s"} in cart</Text>
             </View>
             <View style={styles.totalWrapper}>
               <Text style={styles.summaryTotal}>RM {cartTotal.toFixed(2)}</Text>
             </View>
           </View>
-          <TouchableOpacity
-            style={styles.checkoutButton}
-            onPress={handleProceedToPayment}
-            activeOpacity={0.9}
-          >
+          <TouchableOpacity style={styles.checkoutButton} onPress={handleProceedToPayment} activeOpacity={0.9}>
             <Text style={styles.checkoutButtonText}>Proceed to payment</Text>
             <Image source={forwardIcon} style={styles.forwardIcon} resizeMode="contain" />
           </TouchableOpacity>
         </View>
       )}
-
     </SafeAreaView>
   );
 };
