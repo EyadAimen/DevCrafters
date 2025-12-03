@@ -3,9 +3,10 @@ import {Text, StyleSheet, View, Pressable, Image, ScrollView, ActivityIndicator,
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { supabase } from '../../lib/supabase';
+import * as Location from 'expo-location';
 
 const backArrow = require("../../assets/backArrow.png");
-const locationIcon = require("../../assets/locationIcon.png");
+const locationIcon = require("../../assets/locationGrey.png");
 const nearestIcon = require("../../assets/nearest.png");
 const forwardIcon = require("../../assets/forwardIcon.png");
 
@@ -53,6 +54,8 @@ const OnlineRefillOrder = () => {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [medicineInfo, setMedicineInfo] = React.useState<MedicineInfo | null>(null);
+  const [userLocation, setUserLocation] = React.useState<{latitude: number, longitude: number} | null>(null);
+  const [locationError, setLocationError] = React.useState<string | null>(null);
 
   const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
     const R = 6371;
@@ -67,56 +70,35 @@ const OnlineRefillOrder = () => {
   };
 
   const getReadyTime = (distance: number) => {
-    if (distance < 1) return '1 hour';
-    if (distance < 3) return '2 hours';
-    if (distance < 5) return '3 hours';
+    if (distance < 3) return '1 hour';
+    if (distance < 6) return '2 hours';
+    if (distance < 9) return '3 hours';
     return '4 hours';
   };
 
-  // Helper function to check if medicine stock is sufficient at a pharmacy
-  const checkMedicineStock = async (pharmacyId: string, medicineId: string, requestedQuantity: number) => {
+  const getUserLocation = async () => {
     try {
-      // First, get the reference_id from the medicines table using the medicine_id
-      const { data: medicineData, error: medicineError } = await supabase
-        .from('medicines')
-        .select('reference_id')
-        .eq('medicine_id', medicineId)
-        .maybeSingle();
-
-      if (medicineError || !medicineData?.reference_id) {
-        console.error('Error finding medicine reference_id:', medicineError);
-        return { isAvailable: false, availableStock: 0, error: `Could not find medicine reference_id: ${medicineError?.message}` };
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        setLocationError('Permission to access location was denied');
+        return null;
       }
 
-      const referenceId = medicineData.reference_id;
+      const location = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
 
-      // Now use the reference_id to check stock in pharmacy_medicine table
-      const { data: stockData, error } = await supabase
-        .from('pharmacy_medicine')
-        .select('stock')
-        .eq('pharmacy_id', pharmacyId)
-        .eq('reference_id', referenceId)
-        .maybeSingle();
-
-      if (error) {
-        console.error('Error checking medicine stock:', error);
-        return { isAvailable: false, availableStock: 0, error: error.message };
-      }
-
-      const availableStock = stockData?.stock || 0;
-      const isAvailable = availableStock >= requestedQuantity;
-
-      return {
-        isAvailable,
-        availableStock,
-        error: null,
-        message: isAvailable
-          ? `Stock available: ${availableStock} units`
-          : `Insufficient stock. Available: ${availableStock}, Requested: ${requestedQuantity}`
+      const userCoords = {
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude,
       };
-    } catch (error: any) {
-      console.error('Unexpected error checking stock:', error);
-      return { isAvailable: false, availableStock: 0, error: error.message };
+
+      setUserLocation(userCoords);
+      return userCoords;
+    } catch (err: any) {
+      console.error('Error getting location:', err);
+      setLocationError('Unable to get your location. Using default location.');
+      return null;
     }
   };
 
@@ -175,18 +157,41 @@ const OnlineRefillOrder = () => {
 
         setMedicineInfo(finalMedicineInfo);
 
-        // 4. Fetch pharmacies
+        // 1. Get user location
+        const location = await getUserLocation();
+        const defaultLocation = { latitude: 1.4923, longitude: 103.7413 };
+        const currentLocation = location || defaultLocation;
+
+        // ... existing medicine fetching code ...
+
+        // 4. Fetch pharmacies with latitude and longtitude
         const { data: pharmacyData, error: pharmacyError } = await supabase
           .from('pharmacy')
-          .select('*');
+          .select('pharmacy_id, pharmacy_name, pharmacy_address, latitude, longtitude, pharmacy_phone')
+          .not('latitude', 'is', null)
+          .not('longtitude', 'is', null);
 
         if (pharmacyError) throw pharmacyError;
 
         if (pharmacyData) {
           const pharmaciesWithDetails = pharmacyData.map((pharmacy: any) => {
-            const distance = calculateDistance(1.4923, 103.7413, pharmacy.latitude, pharmacy.longitude);
+            // Note: Your column is spelled 'longtitude' with double 't'
+            const distance = calculateDistance(
+              currentLocation.latitude,
+              currentLocation.longitude,
+              pharmacy.latitude,
+              pharmacy.longtitude // Using the correct column name
+            );
+            // In your fetchData function, after calculating distance, add:
+            console.log("Calculated distance for", pharmacy.pharmacy_name, ":", distance);
+
             return {
-              ...pharmacy,
+              pharmacy_id: pharmacy.pharmacy_id,
+              pharmacy_name: pharmacy.pharmacy_name,
+              pharmacy_address: pharmacy.pharmacy_address,
+              latitude: pharmacy.latitude,
+              longitude: pharmacy.longtitude, // Map to 'longitude' for interface
+              phone: pharmacy.pharmacy_phone || '',
               distance: distance,
               ready_time: getReadyTime(distance)
             };
@@ -247,7 +252,7 @@ const OnlineRefillOrder = () => {
       <SafeAreaView style={styles.container}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#0ea5e9" />
-          <Text style={styles.loadingText}>Loading...</Text>
+          <Text style={styles.loadingText}>Finding pharmacies near you...</Text>
         </View>
       </SafeAreaView>
     );
