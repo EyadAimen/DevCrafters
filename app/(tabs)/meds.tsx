@@ -5,6 +5,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { supabase } from "../../lib/supabase";
+import { Feather } from "@expo/vector-icons";
 import BottomNavigation from "../../components/BottomNavigation";
 
 type Medicine = {
@@ -50,6 +51,7 @@ const ActiveMeds = () => {
 				.from('medicines')
 				.select('*')
 				.eq('user_id', user.id)
+				.eq('is_disposable', false) // Only fetch active, non-disposable medicines
 				.order('medicine_name', { ascending: true });
 
 			if (medicinesError) {
@@ -105,7 +107,59 @@ const ActiveMeds = () => {
 					days: reminder?.days || undefined
 				};
 			});
-			setMedicines(mappedMedicines);
+
+			// Check for expired medicines
+			const today = new Date();
+			today.setHours(0, 0, 0, 0);
+
+			const activeMedicines: Medicine[] = [];
+			const expiredMedicines: Medicine[] = [];
+
+			mappedMedicines.forEach(med => {
+				if (med.expiryDate) {
+					const expiry = new Date(med.expiryDate);
+					expiry.setHours(0, 0, 0, 0);
+					// If expiry is BEFORE today, it is expired. (Due today means expiry == today, which is safe).
+					if (expiry < today) {
+						expiredMedicines.push(med);
+					} else {
+						activeMedicines.push(med);
+					}
+				} else {
+					activeMedicines.push(med);
+				}
+			});
+
+			// Process expired medicines in background
+			if (expiredMedicines.length > 0) {
+				const processExpiry = async () => {
+					for (const med of expiredMedicines) {
+						try {
+							// Update to disposal
+							await supabase
+								.from('medicines')
+								.update({ is_disposable: true, disposal_reason: 'EXPIRED' })
+								.eq('medicine_id', med.id);
+
+							// Log action
+							await supabase
+								.from('disposal_log')
+								.insert({
+									medicine_id: med.id,
+									user_id: user.id,
+									action_type: 'ADDED_EXPIRED',
+									can_revert: false,
+									action_timestamp: new Date().toISOString()
+								});
+						} catch (err) {
+							console.error(`Failed to expire medicine ${med.id}`, err);
+						}
+					}
+				};
+				processExpiry();
+			}
+
+			setMedicines(activeMedicines);
 		} catch (error) {
 			console.error('Error:', error);
 			setMedicines([]);
@@ -173,6 +227,63 @@ const ActiveMeds = () => {
 		return sorted;
 	}, [medicines, search, activeTab, todayStr, filterOptions]);
 
+	const handleMoveToDisposal = (medicineId: string) => {
+		Alert.alert(
+			"Move to Disposal",
+			"Are you sure you want to move this medicine to the disposal list?",
+			[
+				{ text: "Cancel", style: "cancel" },
+				{
+					text: "Move to Disposal",
+					style: "destructive",
+					onPress: async () => {
+						try {
+							const { data: { user } } = await supabase.auth.getUser();
+							if (!user) {
+								Alert.alert("Error", "User not authenticated");
+								return;
+							}
+
+							// 1. Update medicines table
+							const { error: updateError } = await supabase
+								.from('medicines')
+								.update({
+									is_disposable: true,
+									disposal_reason: 'Marked as disposal'
+								})
+								.eq('medicine_id', medicineId);
+
+							if (updateError) throw updateError;
+
+							// 2. Log the action
+							const { error: logError } = await supabase
+								.from('disposal_log')
+								.insert({
+									medicine_id: medicineId,
+									user_id: user.id,
+									action_type: 'ADDED_MANUAL',
+									can_revert: true,
+									action_timestamp: new Date().toISOString()
+								});
+
+							if (logError) {
+								console.error("Error logging disposal:", logError);
+							}
+
+							// 3. Update local state
+							setMedicines(prev => prev.filter(m => m.id !== medicineId));
+							Alert.alert("Success", "Medicine moved to disposal list");
+
+						} catch (error) {
+							console.error("Error moving to disposal:", error);
+							Alert.alert("Error", "Failed to move medicine to disposal list");
+						}
+					}
+				}
+			]
+		);
+	};
+
 	const renderCard = ({ item }: { item: Medicine }) => {
 		const low = item.quantity <= (item.lowStockThreshold ?? 5);
 
@@ -202,12 +313,21 @@ const ActiveMeds = () => {
 						</View>
 						<View style={styles.cardContent}>
 							<View style={styles.cardHeader}>
-								<Text style={styles.cardTitle}>{item.name}</Text>
-								{low && (
-									<View style={styles.lowBadge}>
-										<Text style={styles.lowBadgeText}>Low Stock</Text>
-									</View>
-								)}
+								<View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+									<Text style={styles.cardTitle} numberOfLines={1}>{item.name}</Text>
+									{low && (
+										<View style={styles.lowBadge}>
+											<Text style={styles.lowBadgeText}>Low Stock</Text>
+										</View>
+									)}
+								</View>
+
+								<Pressable
+									onPress={() => handleMoveToDisposal(item.id)}
+									style={{ padding: 4 }}
+								>
+									<Feather name="more-vertical" size={20} color="#94a3b8" />
+								</Pressable>
 							</View>
 							<Text style={styles.cardSub}>{item.strength}</Text>
 							<View style={styles.metaRow}>
