@@ -29,7 +29,6 @@ type Order = {
     status: string;
     total: number;
     pharmacy_name?: string;
-    shipping_address?: any;
     payment_method?: string;
     items: OrderItem[];
 };
@@ -81,52 +80,42 @@ export default function OrderHistory() {
                 return;
             }
 
-            // 1. Get all orders for this user
+            // Fetch orders and their related items in a single query
             const { data: ordersData, error: ordersError } = await supabase
                 .from("orders")
-                .select("*")
+                .select(`
+                    order_id,
+                    created_at,
+                    status,
+                    total_amount,
+                    pharmacy_name,
+                    payment_method,
+                    order_items (
+                        item_id,
+                        medicine_name,
+                        quantity,
+                        unit_price,
+                        subtotal
+                    )
+                `)
                 .eq("user_id", user.id)
                 .order("created_at", { ascending: false });
 
             if (ordersError) throw ordersError;
-
-            console.log("Orders found:", ordersData?.length);
 
             if (!ordersData || ordersData.length === 0) {
                 setOrders([]);
                 return;
             }
 
-            // 2. Get all order items for these orders
-            const orderIds = ordersData.map(order => order.order_id);
-            const { data: itemsData, error: itemsError } = await supabase
-                .from("order_items")
-                .select("*")
-                .in("order_id", orderIds);
-
-            if (itemsError) throw itemsError;
-
-            console.log("Items found:", itemsData?.length);
-
-            // 3. Group items by order_id
-            const itemsByOrderId: Record<string, any[]> = {};
-            itemsData?.forEach(item => {
-                if (!itemsByOrderId[item.order_id]) {
-                    itemsByOrderId[item.order_id] = [];
-                }
-                itemsByOrderId[item.order_id].push(item);
-            });
-
-            // 4. Combine and format
             const formattedOrders: Order[] = ordersData.map((order: any) => ({
                 id: order.order_id,
                 date: new Date(order.created_at).toLocaleDateString(),
                 status: order.status?.charAt(0).toUpperCase() + order.status?.slice(1) || "Pending",
                 total: order.total_amount || 0,
                 pharmacy_name: order.pharmacy_name,
-                shipping_address: order.shipping_address,
                 payment_method: order.payment_method,
-                items: (itemsByOrderId[order.order_id] || []).map((item: any) => ({
+                items: (order.order_items || []).map((item: any) => ({
                     item_id: item.item_id,
                     medicine_name: item.medicine_name,
                     quantity: item.quantity || 1,
@@ -135,7 +124,6 @@ export default function OrderHistory() {
                 })),
             }));
 
-            console.log("Final formatted orders:", formattedOrders);
             setOrders(formattedOrders);
         } catch (error) {
             console.error("Error fetching orders:", error);

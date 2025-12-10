@@ -86,6 +86,7 @@ const OnlineRefillOrder3 = () => {
   const totalPrice = getParam("totalPrice");
   const unitPrice = parseFloat(getParam("unitPrice")) || 0;
   const pharmacyId = getParam("pharmacyId");
+  const referenceId = getParam("referenceId"); // Get the referenceId
   const pharmacyName = getParam("pharmacyName");
 
   const quantityNum = parseInt(quantity) || 0;
@@ -95,7 +96,6 @@ const OnlineRefillOrder3 = () => {
   const saveOrderAndItems = async (userId: string) => {
     const now = new Date().toISOString();
 
-    // Create order WITHOUT shipping address
     const orderData = {
       user_id: userId,
       pharmacy_name: pharmacyName || "Unknown Pharmacy",
@@ -144,7 +144,6 @@ const OnlineRefillOrder3 = () => {
     if (error) throw error;
 
     const newStock = (data?.current_stock || 0) + qty;
-
     const { error: updateError } = await supabase
       .from("medicines")
       .update({ current_stock: newStock })
@@ -153,27 +152,32 @@ const OnlineRefillOrder3 = () => {
     if (updateError) throw updateError;
   };
 
+  // Deduct stock from pharmacy inventory
+  const deductPharmacyStock = async () => {
+    if (!pharmacyId || !referenceId) return;
+
+    // Get the pharmacy_medicine record to update its stock
+    const { data: pm, error: pmError } = await supabase
+      .from("pharmacy_medicine")
+      .select("id, stock")
+      .eq("pharmacy_id", pharmacyId)
+      .eq("reference_id", referenceId)
+      .single();
+
+    if (pmError || !pm) {
+      console.error("Could not find pharmacy medicine to deduct stock:", pmError);
+      // Continue without throwing error, as order is already placed. Log this for review.
+      return;
+    }
+
+    const newStock = Math.max(0, pm.stock - quantityNum);
+    await supabase.from("pharmacy_medicine").update({ stock: newStock }).eq("id", pm.id);
+  };
+
   const handlePayment = async () => {
     if (quantityNum <= 0 || totalPriceNum <= 0) {
       Alert.alert("Error", "Invalid order details.");
       return;
-    }
-
-    // Check stock
-    if (pharmacyId && medicineId) {
-      const stockCheck = await checkMedicineStock(
-        pharmacyId,
-        medicineId,
-        quantityNum
-      );
-
-      if (!stockCheck.isAvailable) {
-        Alert.alert(
-          "Stock Issue",
-          `Available: ${stockCheck.availableStock}\nRequested: ${quantityNum}`
-        );
-        return;
-      }
     }
 
     setIsProcessing(true);
@@ -223,6 +227,9 @@ const OnlineRefillOrder3 = () => {
       if (medicineId) {
         await updateMedicineStock(medicineId, quantityNum);
       }
+
+      // Deduct stock from pharmacy
+      await deductPharmacyStock();
 
       Alert.alert(
         "Payment Successful",
