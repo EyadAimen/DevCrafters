@@ -8,6 +8,7 @@ import {
   Pressable,
   Image,
 } from "react-native";
+import DateTimePicker from "@react-native-community/datetimepicker";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { supabase } from "../../lib/supabase";
@@ -16,6 +17,7 @@ type MedicationRecord = {
   id: string;
   medicine_name: string;
   intake_time: string;
+  intake_date: Date; // keep actual date
   dateHeader?: string;
 };
 
@@ -24,6 +26,13 @@ export default function MedicationHistoryScreen() {
 
   const [activeTab, setActiveTab] = useState<"history" | "reports">("history");
   const [searchQuery, setSearchQuery] = useState("");
+
+  // --- Date range filter ---
+  const [startDate, setStartDate] = useState<Date | null>(null);
+  const [endDate, setEndDate] = useState<Date | null>(null);
+  const [showStartPicker, setShowStartPicker] = useState(false);
+  const [showEndPicker, setShowEndPicker] = useState(false);
+
   const [history, setHistory] = useState<MedicationRecord[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -64,21 +73,20 @@ export default function MedicationHistoryScreen() {
       let currentDate = "";
 
       data.forEach((record: any) => {
-        const dateStr = new Date(record.intake_time).toLocaleDateString(
-          "en-US",
-          {
-            weekday: "long",
-            day: "numeric",
-            month: "long",
-            year: "numeric",
-          }
-        );
+        const intakeDate = new Date(record.intake_time);
+        const dateStr = intakeDate.toLocaleDateString("en-US", {
+          weekday: "long",
+          day: "numeric",
+          month: "long",
+          year: "numeric",
+        });
 
         if (dateStr !== currentDate) {
           records.push({
             id: `date-${dateStr}`,
             medicine_name: "",
             intake_time: "",
+            intake_date: intakeDate,
             dateHeader: dateStr,
           });
           currentDate = dateStr;
@@ -87,10 +95,11 @@ export default function MedicationHistoryScreen() {
         records.push({
           id: record.id,
           medicine_name: record.medicine_name || "Unknown",
-          intake_time: new Date(record.intake_time).toLocaleTimeString([], {
+          intake_time: intakeDate.toLocaleTimeString([], {
             hour: "2-digit",
             minute: "2-digit",
           }),
+          intake_date: intakeDate,
         });
       });
 
@@ -103,17 +112,41 @@ export default function MedicationHistoryScreen() {
     }
   };
 
-  const filteredHistory = history.filter((record) => {
-    if (record.dateHeader) return true;
+  // --------------------------
+  //        FILTER LOGIC
+  // --------------------------
+  const filteredHistory = history.filter((record, index) => {
+    // Always keep date headers only if they are within range
+    if (record.dateHeader) {
+      if (!startDate && !endDate) return true;
 
-    return (
-      record.medicine_name
-        .toLowerCase()
-        .includes(searchQuery.toLowerCase()) ||
-      record.intake_time
-        .toLowerCase()
-        .includes(searchQuery.toLowerCase())
-    );
+      const headerDate = record.intake_date;
+      if (startDate && headerDate < startDate) return false;
+      if (endDate && headerDate > endDate) return false;
+
+      return true;
+    }
+
+    const matchesSearch =
+      record.medicine_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      record.intake_time.toLowerCase().includes(searchQuery.toLowerCase());
+
+    // Find the nearest dateHeader above this record
+    let headerDate: Date | null = null;
+    for (let i = index; i >= 0; i--) {
+      if (history[i].dateHeader) {
+        headerDate = history[i].intake_date;
+        break;
+      }
+    }
+
+    let matchesDate = true;
+    if (headerDate) {
+      if (startDate && headerDate < startDate) matchesDate = false;
+      if (endDate && headerDate > endDate) matchesDate = false;
+    }
+
+    return matchesSearch && matchesDate;
   });
 
   return (
@@ -163,6 +196,70 @@ export default function MedicationHistoryScreen() {
               Reports
             </Text>
           </Pressable>
+        </View>
+
+        {/* DATE RANGE FILTER */}
+        <View style={[styles.card, { marginTop: 16 }]}>
+          <Text style={styles.sectionTitle}>Filter by Date Range</Text>
+
+          <View style={styles.dateRow}>
+            {/* Start Date */}
+            <Pressable
+              style={styles.dateFilterButton}
+              onPress={() => setShowStartPicker(true)}
+            >
+              <Text style={styles.dateFilterText}>
+                {startDate ? startDate.toLocaleDateString("en-US") : "Start Date"}
+              </Text>
+            </Pressable>
+
+            {/* End Date */}
+            <Pressable
+              style={styles.dateFilterButton}
+              onPress={() => setShowEndPicker(true)}
+            >
+              <Text style={styles.dateFilterText}>
+                {endDate ? endDate.toLocaleDateString("en-US") : "End Date"}
+              </Text>
+            </Pressable>
+          </View>
+
+          {showStartPicker && (
+            <DateTimePicker
+              value={startDate || new Date()}
+              mode="date"
+              display="calendar"
+              onChange={(event, date) => {
+                setShowStartPicker(false);
+                if (date) setStartDate(date);
+              }}
+            />
+          )}
+
+          {showEndPicker && (
+            <DateTimePicker
+              value={endDate || new Date()}
+              mode="date"
+              display="calendar"
+              onChange={(event, date) => {
+                setShowEndPicker(false);
+                if (date) setEndDate(date);
+              }}
+            />
+          )}
+
+          {/* Clear Filter */}
+          {(startDate || endDate) && (
+            <Pressable
+              style={styles.clearButton}
+              onPress={() => {
+                setStartDate(null);
+                setEndDate(null);
+              }}
+            >
+              <Text style={styles.clearButtonText}>Clear Filter</Text>
+            </Pressable>
+          )}
         </View>
 
         {/* Search Bar */}
@@ -260,6 +357,44 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
   },
 
+  // Date Filter
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: "#0f172a",
+    marginBottom: 12,
+  },
+  dateRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  dateFilterButton: {
+    flex: 1,
+    backgroundColor: "#f1f5f9",
+    padding: 12,
+    borderRadius: 12,
+    marginBottom: 12,
+    marginHorizontal: 4,
+    alignItems: "center",
+  },
+  dateFilterText: {
+    color: "#0f172a",
+    fontSize: 16,
+  },
+  clearButton: {
+    backgroundColor: "#ef4444",
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    alignSelf: "flex-start",
+    marginTop: 6,
+  },
+  clearButtonText: {
+    color: "#fff",
+    fontWeight: "600",
+    fontSize: 14,
+  },
+
   searchInput: {
     backgroundColor: "#f0f0f0",
     padding: 12,
@@ -300,3 +435,4 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
 });
+
