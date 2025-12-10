@@ -199,7 +199,7 @@ const OnlineRefillOrder3 = () => {
 
       // Initialize sheet
       const { error: initError } = await initPaymentSheet({
-        merchantDisplayName: "MindBridge Pharmacy",
+        merchantDisplayName: pharmacyName || "Pharmacy",
         paymentIntentClientSecret: clientSecret,
         paymentMethodTypes: ["card", "grabpay"],
       });

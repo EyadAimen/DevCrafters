@@ -115,39 +115,59 @@ export default function MedicationHistoryScreen() {
   // --------------------------
   //        FILTER LOGIC
   // --------------------------
-  const filteredHistory = history.filter((record, index) => {
-    // Always keep date headers only if they are within range
-    if (record.dateHeader) {
-      if (!startDate && !endDate) return true;
+  const filteredHistory = (() => {
+    if (!searchQuery && !startDate && !endDate) return history;
 
-      const headerDate = record.intake_date;
-      if (startDate && headerDate < startDate) return false;
-      if (endDate && headerDate > endDate) return false;
+    const groupedByDate: { [date: string]: MedicationRecord[] } = {};
 
-      return true;
-    }
+    history.forEach((record) => {
+      const dateKey = record.intake_date.toDateString();
 
-    const matchesSearch =
-      record.medicine_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      record.intake_time.toLowerCase().includes(searchQuery.toLowerCase());
+      if (!groupedByDate[dateKey]) groupedByDate[dateKey] = [];
 
-    // Find the nearest dateHeader above this record
-    let headerDate: Date | null = null;
-    for (let i = index; i >= 0; i--) {
-      if (history[i].dateHeader) {
-        headerDate = history[i].intake_date;
-        break;
-      }
-    }
+      // Only push real medicine records (skip existing date headers)
+      if (!record.dateHeader) groupedByDate[dateKey].push(record);
+    });
 
-    let matchesDate = true;
-    if (headerDate) {
-      if (startDate && headerDate < startDate) matchesDate = false;
-      if (endDate && headerDate > endDate) matchesDate = false;
-    }
+    const result: MedicationRecord[] = [];
 
-    return matchesSearch && matchesDate;
-  });
+    Object.keys(groupedByDate)
+      .sort((a, b) => new Date(b).getTime() - new Date(a).getTime()) // sort descending
+      .forEach((dateKey) => {
+        const records = groupedByDate[dateKey];
+
+        // Filter by search query
+        const filteredRecords = records.filter((rec) =>
+          rec.medicine_name.toLowerCase().includes(searchQuery.toLowerCase())
+        );
+
+        // Filter by date range
+        const dateObj = new Date(dateKey);
+        const inRange =
+          (!startDate || dateObj >= startDate) && (!endDate || dateObj <= endDate);
+
+        if (filteredRecords.length > 0 && inRange) {
+          // Add date header
+          result.push({
+            id: `date-${dateKey}`,
+            medicine_name: "",
+            intake_time: "",
+            intake_date: dateObj,
+            dateHeader: dateObj.toLocaleDateString("en-US", {
+              weekday: "long",
+              day: "numeric",
+              month: "long",
+              year: "numeric",
+            }),
+          });
+
+          // Add filtered medicine records
+          result.push(...filteredRecords);
+        }
+      });
+
+    return result;
+  })();
 
   return (
     <SafeAreaView style={styles.container}>
