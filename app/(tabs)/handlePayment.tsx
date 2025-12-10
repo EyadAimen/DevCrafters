@@ -1,34 +1,24 @@
-import { Alert } from "react-native";
-import { supabase } from "../../lib/supabase"; // Assuming this is the correct path
-import {
-  initPaymentSheet,
-  presentPaymentSheet,
-} from "@stripe/stripe-react-native";
+import { View, Text, Button, Alert } from "react-native";
+import { supabase } from "../../lib/supabase";
 import { useRouter } from "expo-router";
+import { useState } from "react";
 
-// Define props for the function to make it more reusable and clear
-type HandlePaymentProps = {
-  medicineId: string;
-  medicineName: string;
-  quantityNum: number;
-  totalPriceNum: number;
-  currentStockNum: number;
-  pharmacyName: string;
-  passedUnitPrice?: number;
-  setIsProcessing: (isProcessing: boolean) => void;
-};
-
-const handlePayment = async ({
-  medicineId,
+// Main Payment Function
+export const handlePayment = async ({
   medicineName,
   quantityNum,
   totalPriceNum,
-  currentStockNum,
-  pharmacyName,
   passedUnitPrice,
+  medicineId,
+  pharmacyId, // required foreign key
+  currentStockNum,
+  initPaymentSheet,
+  presentPaymentSheet,
+  SUPABASE_URL,
+  SUPABASE_ANON_KEY,
   setIsProcessing,
-}: HandlePaymentProps) => {
-  const router = useRouter(); // Assuming you'll use this for navigation
+}: any) => {
+  const router = useRouter();
 
   try {
     setIsProcessing(true);
@@ -37,111 +27,74 @@ const handlePayment = async ({
     // 1️⃣ Get user session
     const { data: sessionData } = await supabase.auth.getSession();
     const userId = sessionData?.session?.user.id;
-    if (!userId) {
-      console.log("❌ No user ID found");
-      throw new Error("Please login first");
-    }
+    if (!userId) throw new Error("Please login first");
     console.log("✅ User ID:", userId);
 
-    // Log props at the beginning
-    console.log("🔍 handlePayment received props:", {
-      medicineId,
-      medicineName,
-      quantity: quantityNum,
-      total: totalPriceNum,
-      hasPassedUnitPrice: passedUnitPrice !== undefined,
-      pharmacyName,
+    // 1a️⃣ Verify pharmacy exists
+    const { data: pharmacy, error: pharmacyError } = await supabase
+      .from("pharmacy")
+      .select("pharmacy_id, name")
+      .eq("pharmacy_id", pharmacyId)
+      .single();
+
+    if (pharmacyError || !pharmacy) throw new Error("Invalid pharmacy_id provided");
+    console.log("✅ Pharmacy verified:", pharmacy.name);
+
+    // 2️⃣ Create PaymentIntent via Supabase Edge Function
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/create-payment-intent`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: SUPABASE_ANON_KEY },
+      body: JSON.stringify({ amount: totalPriceNum * 100, currency: "myr" }),
     });
 
-    // 2️⃣ Call Supabase Edge Function to create PaymentIntent
-    console.log("📤 Creating payment intent...");
-    const { data: paymentIntentData, error: paymentIntentError } = await supabase.functions.invoke(
-      "create-payment-intent",
-      { body: { amount: Math.round(totalPriceNum * 100) } }
-    );
-
-    if (paymentIntentError) throw paymentIntentError;
-    if (!paymentIntentData?.clientSecret) {
-      throw new Error("Invalid response from payment service.");
-    }
-
-    const { clientSecret } = paymentIntentData;
-
+    const paymentIntentData = await res.json();
+    const { clientSecret, error: paymentIntentError } = paymentIntentData;
     if (paymentIntentError) throw new Error(paymentIntentError);
 
     // 3️⃣ Initialize Payment Sheet
-    console.log("🔄 Initializing payment sheet...");
     const { error: initError } = await initPaymentSheet({
       merchantDisplayName: "Pillora Pharmacy",
       paymentIntentClientSecret: clientSecret,
+      returnURL: "yourapp://stripe-redirect",
     });
-    if (initError) {
-      console.error("❌ Payment sheet init error:", initError);
-      throw new Error(initError.message);
-    }
+    if (initError) throw new Error(initError.message);
 
     // 4️⃣ Present Payment Sheet
-    console.log("💳 Presenting payment sheet...");
     const { error: paymentError } = await presentPaymentSheet();
-    if (paymentError) { // Handle cancellation gracefully
-      if (paymentError.code === 'Canceled') {
-        console.log("Payment was cancelled by the user.");
-        setIsProcessing(false);
-        return;
-      }
-      console.error("❌ Payment sheet error:", paymentError.message);
-      throw new Error(`Payment failed: ${paymentError.message}`);
-    }
-
+    if (paymentError) throw new Error(paymentError.message);
     console.log("✅ Payment successful!");
 
-    // 5️⃣ Payment success → update Supabase
-    console.log("📦 Updating stock...");
-    const newStock = currentStockNum + quantityNum; // CORRECTED: Add stock for a refill
-    console.log("Stock update:", { medicineId, currentStockNum, quantityNum, newStock });
-
+    // 5️⃣ Update stock
+    const newStock = currentStockNum + quantityNum;
     const { error: stockError } = await supabase
       .from("medicines")
       .update({ current_stock: newStock })
       .eq("medicine_id", medicineId);
-
-    if (stockError) {
-      console.error("❌ Stock update error:", stockError);
-      throw new Error(`Stock update failed: ${stockError.message}`);
-    }
+    if (stockError) throw new Error(`Stock update failed: ${stockError.message}`);
     console.log("✅ Stock updated");
 
     // 6️⃣ Calculate unit price
-    const unitPrice = passedUnitPrice !== undefined ? passedUnitPrice : (totalPriceNum / quantityNum);
-    console.log("💰 Unit price:", unitPrice);
+    const unitPrice = passedUnitPrice !== undefined ? passedUnitPrice : totalPriceNum / quantityNum;
 
-    // 7️⃣ Create order
+    // 7️⃣ Create order with valid pharmacy_id
     const orderData = {
       user_id: userId,
       status: "completed",
       total_amount: totalPriceNum,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
-      pharmacy_name: pharmacyName || "Unknown Pharmacy",
+      pharmacy_id: pharmacyId,
       payment_method: "stripe",
       quantity: quantityNum,
       medicine_name: medicineName || "Unknown Medicine",
     };
-
-    console.log("📝 Creating order with data:", orderData);
 
     const { data: order, error: orderError } = await supabase
       .from("orders")
       .insert([orderData])
       .select()
       .single();
-
-    if (orderError) {
-      console.error("❌ Order creation error:", orderError);
-      console.error("Error details:", orderError.message, orderError.details);
-      throw new Error(`Order creation failed: ${orderError.message}`);
-    }
-
+    if (orderError) throw new Error(`Order creation failed: ${orderError.message}`);
     console.log("✅ Order created with ID:", order.order_id);
 
     // 8️⃣ Create order item(s)
@@ -153,72 +106,48 @@ const handlePayment = async ({
       created_at: new Date().toISOString(),
     };
 
-    console.log("📦 Creating order item with data:", orderItemsData);
-
     const { data: insertedItems, error: itemsError } = await supabase
       .from("order_items")
       .insert([orderItemsData])
       .select();
-
-    if (itemsError) {
-      console.error("❌ Order items creation error:", itemsError);
-      console.error("Error details:", itemsError.message, itemsError.details, itemsError.hint);
-      throw new Error(`Order items creation failed: ${itemsError.message}`);
-    }
-
+    if (itemsError) throw new Error(`Order items creation failed: ${itemsError.message}`);
     console.log("✅ Order items created successfully:", insertedItems);
 
-    // 9️⃣ VERIFY IMMEDIATELY
-    console.log("🔍 Verifying order items in database...");
-    const { data: verifyData, error: verifyError } = await supabase
-      .from("order_items")
-      .select("*")
-      .eq("order_id", order.order_id);
-
-    if (verifyError) {
-      console.error("❌ Verification error:", verifyError);
-    } else {
-      console.log("✅ Verification successful. Items found:", verifyData.length);
-      console.log("Items:", verifyData);
-    }
-
-    console.log("🎉 Payment process COMPLETE!");
     Alert.alert("Success", "Payment complete! Order saved.");
-
-    // Delay navigation to ensure logs are captured
-    setTimeout(() => {
-      router.push("/(tabs)/meds");
-    }, 100);
+    router.push("/(tabs)/meds");
 
   } catch (error: any) {
     console.error("💥 Payment error:", error);
-    console.error("Error stack:", error.stack);
     Alert.alert("Payment Failed", error.message || "Something went wrong");
   } finally {
-    console.log("🏁 handlePayment FINISHED");
     setIsProcessing(false);
   }
 };
 
-// SEPARATE FUNCTION - Outside handlePayment
-const testDirectInsertion = async () => {
+// TEST FUNCTION
+export const testDirectInsertion = async (pharmacyId: string) => {
   try {
-    console.log("🧪 TEST: Direct order items insertion");
-
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      console.log("No user");
-      return;
-    }
+    if (!user) return;
 
-    // Create a test order first
+    if (!pharmacyId) throw new Error("pharmacy_id is required for test insertion");
+
+    // Verify pharmacy exists
+    const { data: pharmacy, error: pharmacyError } = await supabase
+      .from("pharmacy")
+      .select("pharmacy_id, name")
+      .eq("pharmacy_id", pharmacyId)
+      .single();
+    if (pharmacyError || !pharmacy) throw new Error("Invalid pharmacy_id for test");
+
+    // Test order creation
     const orderData = {
       user_id: user.id,
       status: "completed",
       total_amount: 99.99,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
-      pharmacy_name: "Test Pharmacy",
+      pharmacy_id: pharmacyId,
       payment_method: "test",
       quantity: 5,
       medicine_name: "Test Medicine",
@@ -229,15 +158,9 @@ const testDirectInsertion = async () => {
       .insert([orderData])
       .select()
       .single();
+    if (orderError) throw new Error(orderError.message);
 
-    if (orderError) {
-      console.error("Test order error:", orderError);
-      return;
-    }
-
-    console.log("Test order created:", testOrder.order_id);
-
-    // Now test order_items insertion
+    // Test order_items insertion
     const testItemData = {
       order_id: testOrder.order_id,
       medicine_name: "Test Medicine",
@@ -246,20 +169,16 @@ const testDirectInsertion = async () => {
       created_at: new Date().toISOString(),
     };
 
-    console.log("Test inserting order item:", testItemData);
-
     const { data: inserted, error: insertError } = await supabase
       .from("order_items")
       .insert([testItemData])
       .select();
 
-    if (insertError) {
-      console.error("❌ Test insertion failed:", insertError);
-    } else {
-      console.log("✅ Test insertion successful:", inserted);
-    }
+    if (insertError) console.error("❌ Test insertion failed:", insertError);
+    else console.log("✅ Test insertion successful:", inserted);
 
   } catch (error) {
     console.error("Test error:", error);
   }
 };
+
