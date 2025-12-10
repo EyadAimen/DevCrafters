@@ -129,6 +129,13 @@ export default function MedicationHistoryScreen() {
       if (!record.dateHeader) groupedByDate[dateKey].push(record);
     });
 
+    // Normalize start and end dates
+    const normalizedStart = startDate ? new Date(startDate) : null;
+    if (normalizedStart) normalizedStart.setHours(0, 0, 0, 0);
+
+    const normalizedEnd = endDate ? new Date(endDate) : null;
+    if (normalizedEnd) normalizedEnd.setHours(23, 59, 59, 999);
+
     const result: MedicationRecord[] = [];
 
     Object.keys(groupedByDate)
@@ -144,7 +151,8 @@ export default function MedicationHistoryScreen() {
         // Filter by date range
         const dateObj = new Date(dateKey);
         const inRange =
-          (!startDate || dateObj >= startDate) && (!endDate || dateObj <= endDate);
+          (!normalizedStart || dateObj >= normalizedStart) &&
+          (!normalizedEnd || dateObj <= normalizedEnd);
 
         if (filteredRecords.length > 0 && inRange) {
           // Add date header
