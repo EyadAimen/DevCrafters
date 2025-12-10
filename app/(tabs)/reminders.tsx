@@ -489,35 +489,49 @@ export default function Reminders() {
   const scheduleNotification = async (reminder) => {
     if (!settings.pushNotifications || !notificationsInitialized) return;
 
-    const [hours, minutes] = reminder.scheduled_time.split(':');
-    const medicineName = reminder.medicines?.medicine_name || reminder.medicine_name || 'your medication';
+    const [hours, minutes] = reminder.scheduled_time.split(":");
+
+    const medicineName =
+      reminder.medicines?.medicine_name ||
+      reminder.medicine_name ||
+      "your medication";
 
     try {
       const identifier = `reminder_${reminder.reminder_id}`;
 
-      // Use daily trigger for reliable repeating notifications
+      // Schedule daily repeating reminder
       await Notifications.scheduleNotificationAsync({
         content: {
-          title: "Medication Reminder",
-          body: `Time to take ${medicineName}`,
-          sound: settings.soundAlerts ? 'default' : null,
-          data: { reminderId: reminder.reminder_id },
+          title: `Time to take ${medicineName}`,
+          body: "Tap to confirm you took your dose",
+          sound: settings.soundAlerts ? "default" : null,
+          data: {
+            reminderId: reminder.reminder_id,
+            medicineName: medicineName,
+            scheduledTime: reminder.scheduled_time,
+          },
           android: {
-            channelId: 'medication-reminders'
-          }
+            channelId: "medication-reminders",
+          },
         },
         trigger: {
-          type: 'daily',
+          type: "daily",
           hour: parseInt(hours),
           minute: parseInt(minutes),
         },
-        identifier: identifier,
+        identifier,
       });
 
-      console.log('Daily notification scheduled for:', `${hours}:${minutes}`, 'ID:', identifier);
+      console.log(
+        "Daily notification scheduled:",
+        `${hours}:${minutes}`,
+        "ID:",
+        identifier
+      );
+
       return true;
     } catch (error) {
-      console.error('Error scheduling notification:', error);
+      console.error("Error scheduling notification:", error);
       return false;
     }
   };
