@@ -119,6 +119,7 @@ const Profile: React.FC = () => {
             title="Medical History"
             subtitle="View reports and records"
             icon={require("../../assets/profileMedicalHis.png")}
+            onPress={() => router.push("/MedicationHistoryScreen")}
           />
           <SettingRow
             title="Payment Methods"
