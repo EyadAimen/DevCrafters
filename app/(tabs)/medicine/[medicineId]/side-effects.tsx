@@ -37,40 +37,21 @@ export default function MedicineDetailsSideEffects() {
             setLoading(true);
 
             try {
-                // First get the medicine data
-                const { data: medicineData, error: medicineError } = await supabase
+                const { data, error } = await supabase
                     .from("medicines")
-                    .select("*")
+                    .select(`
+                        *,
+                        medicine_reference (
+                            common_side_effects,
+                            serious_side_effects
+                        )
+                    `)
                     .eq("medicine_id", medicineId)
                     .single();
 
-                if (medicineError) {
-                    console.error("Error fetching medicine:", medicineError);
-                    return;
-                }
-
-                // Then get reference data if reference_id exists
-                let referenceData = null;
-                if (medicineData.reference_id) {
-                    const { data: refData, error: refError } = await supabase
-                        .from("medicine_reference")
-                        .select("common_side_effects, serious_side_effects")
-                        .eq("drug_id", medicineData.reference_id)
-                        .single();
-
-                    if (!refError && refData) {
-                        referenceData = refData;
-                    }
-                }
-
-                // Combine the data
-                const combinedData = {
-                    ...medicineData,
-                    medicine_reference: referenceData
-                };
-
-                console.log("Side effects data:", combinedData);
-                setData(combinedData as MedicineData);
+                if (error) throw error;
+                console.log("Side effects data:", data);
+                setData(data as MedicineData);
 
             } catch (error) {
                 console.error("Error in fetchSideEffects:", error);

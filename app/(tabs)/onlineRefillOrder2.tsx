@@ -20,7 +20,7 @@ const checkMedicineStock = async (pharmacyId: string, medicineId: string, reques
 
     if (medicineError || !medicineData?.reference_id) {
       console.error('Error finding medicine reference_id:', medicineError);
-      return { isAvailable: false, availableStock: 0, error: `Could not find medicine reference_id: ${medicineError?.message}` };
+      return { isAvailable: false, availableStock: 0, referenceId: null, error: `Could not find medicine reference_id: ${medicineError?.message}` };
     }
 
     const referenceId = medicineData.reference_id;
@@ -35,13 +35,14 @@ const checkMedicineStock = async (pharmacyId: string, medicineId: string, reques
 
     if (error) {
       console.error('Error checking medicine stock:', error);
-      return { isAvailable: false, availableStock: 0, error: error.message };
+      return { isAvailable: false, availableStock: 0, referenceId, error: error.message };
     }
 
     const availableStock = stockData?.stock || 0;
     const isAvailable = availableStock >= requestedQuantity;
 
     return {
+      referenceId,
       isAvailable,
       availableStock,
       error: null,
@@ -51,7 +52,7 @@ const checkMedicineStock = async (pharmacyId: string, medicineId: string, reques
     };
   } catch (error: any) {
     console.error('Unexpected error checking stock:', error);
-    return { isAvailable: false, availableStock: 0, error: error.message };
+    return { isAvailable: false, availableStock: 0, referenceId: null, error: error.message };
   }
 };
 
@@ -245,6 +246,7 @@ const OnlineRefillOrder2 = () => {
     // Pass data to next screen
     const paramsToPass: Record<string, string> = {
       medicineId: medicineId,
+      referenceId: stockCheck.referenceId || "", // Pass the referenceId
       unitPrice: unitPrice.toString(),
       medicineName,
       dosage,

@@ -1,9 +1,35 @@
-import {  View, 
-  Text, 
-  Button, // Add Button here
-  Alert,} from "react-native"; // Add this import
+import { Alert } from "react-native";
+import { supabase } from "../../lib/supabase"; // Assuming this is the correct path
+import {
+  initPaymentSheet,
+  presentPaymentSheet,
+} from "@stripe/stripe-react-native";
+import { useRouter } from "expo-router";
 
-const handlePayment = async () => {
+// Define props for the function to make it more reusable and clear
+type HandlePaymentProps = {
+  medicineId: string;
+  medicineName: string;
+  quantityNum: number;
+  totalPriceNum: number;
+  currentStockNum: number;
+  pharmacyName: string;
+  passedUnitPrice?: number;
+  setIsProcessing: (isProcessing: boolean) => void;
+};
+
+const handlePayment = async ({
+  medicineId,
+  medicineName,
+  quantityNum,
+  totalPriceNum,
+  currentStockNum,
+  pharmacyName,
+  passedUnitPrice,
+  setIsProcessing,
+}: HandlePaymentProps) => {
+  const router = useRouter(); // Assuming you'll use this for navigation
+
   try {
     setIsProcessing(true);
     console.log("🔵 handlePayment STARTED");
@@ -18,48 +44,36 @@ const handlePayment = async () => {
     console.log("✅ User ID:", userId);
 
     // Log props at the beginning
-    console.log("🔍 Payment component received props:", {
+    console.log("🔍 handlePayment received props:", {
+      medicineId,
       medicineName,
       quantity: quantityNum,
       total: totalPriceNum,
-      hasShippingAddress: !!shippingAddress,
       hasPassedUnitPrice: passedUnitPrice !== undefined,
-      medicineId,
-      pharmacyName
-    });
-
-    // DEBUG: Log all available data
-    console.log("📊 Payment debug data:", {
-      userId,
-      medicineId,
-      medicineName,
-      quantityNum: quantityNum || "undefined",
-      totalPriceNum: totalPriceNum || "undefined",
-      passedUnitPrice: passedUnitPrice !== undefined ? passedUnitPrice : "UNDEFINED",
-      unitPrice: totalPriceNum / quantityNum,
-      pharmacyName: pharmacyName || "undefined",
-      shippingAddress: shippingAddress || "NOT PROVIDED"
+      pharmacyName,
     });
 
     // 2️⃣ Call Supabase Edge Function to create PaymentIntent
     console.log("📤 Creating payment intent...");
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/create-payment-intent`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", apikey: SUPABASE_ANON_KEY },
-      body: JSON.stringify({ amount: totalPriceNum * 100, currency: "myr" })
-    });
+    const { data: paymentIntentData, error: paymentIntentError } = await supabase.functions.invoke(
+      "create-payment-intent",
+      { body: { amount: Math.round(totalPriceNum * 100) } }
+    );
 
-    const paymentIntentData = await res.json();
-    console.log("Payment intent response:", paymentIntentData);
+    if (paymentIntentError) throw paymentIntentError;
+    if (!paymentIntentData?.clientSecret) {
+      throw new Error("Invalid response from payment service.");
+    }
 
-    const { clientSecret, error: paymentIntentError } = paymentIntentData;
+    const { clientSecret } = paymentIntentData;
+
     if (paymentIntentError) throw new Error(paymentIntentError);
 
     // 3️⃣ Initialize Payment Sheet
     console.log("🔄 Initializing payment sheet...");
     const { error: initError } = await initPaymentSheet({
+      merchantDisplayName: "Pillora Pharmacy",
       paymentIntentClientSecret: clientSecret,
-      returnURL: "yourapp://stripe-redirect" // Add this line
     });
     if (initError) {
       console.error("❌ Payment sheet init error:", initError);
@@ -69,16 +83,21 @@ const handlePayment = async () => {
     // 4️⃣ Present Payment Sheet
     console.log("💳 Presenting payment sheet...");
     const { error: paymentError } = await presentPaymentSheet();
-    if (paymentError) {
-      console.error("❌ Payment sheet error:", paymentError);
-      throw new Error(paymentError.message);
+    if (paymentError) { // Handle cancellation gracefully
+      if (paymentError.code === 'Canceled') {
+        console.log("Payment was cancelled by the user.");
+        setIsProcessing(false);
+        return;
+      }
+      console.error("❌ Payment sheet error:", paymentError.message);
+      throw new Error(`Payment failed: ${paymentError.message}`);
     }
 
     console.log("✅ Payment successful!");
 
     // 5️⃣ Payment success → update Supabase
     console.log("📦 Updating stock...");
-    const newStock = currentStockNum + quantityNum;
+    const newStock = currentStockNum + quantityNum; // CORRECTED: Add stock for a refill
     console.log("Stock update:", { medicineId, currentStockNum, quantityNum, newStock });
 
     const { error: stockError } = await supabase
@@ -104,7 +123,6 @@ const handlePayment = async () => {
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       pharmacy_name: pharmacyName || "Unknown Pharmacy",
-      shipping_address: shippingAddress || "Address not provided",
       payment_method: "stripe",
       quantity: quantityNum,
       medicine_name: medicineName || "Unknown Medicine",
@@ -201,7 +219,6 @@ const testDirectInsertion = async () => {
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       pharmacy_name: "Test Pharmacy",
-      shipping_address: "Test Address",
       payment_method: "test",
       quantity: 5,
       medicine_name: "Test Medicine",

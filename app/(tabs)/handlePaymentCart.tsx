@@ -135,16 +135,7 @@ const HandlePaymentCart = () => {
         return;
       }
 
-      // 4️⃣ Get shipping address from user profile
-      const { data: profileData } = await supabase
-        .from("profiles")
-        .select("address")
-        .eq("user_id", userId)
-        .single();
-
-      const shippingAddress = profileData?.address || pharmacyAddress || "Address not provided";
-
-      // 5️⃣ Payment successful, create order
+      // 4️⃣ Payment successful, create order
       const totalAmount = cartTotal;
       const orderData = {
         user_id: userId,
@@ -153,7 +144,6 @@ const HandlePaymentCart = () => {
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         pharmacy_name: pharmacyName || "Unknown Pharmacy",
-        shipping_address: shippingAddress,
         payment_method: "stripe",
         quantity: cartItems.reduce((acc, i) => acc + i.quantity, 0),
       };
@@ -170,7 +160,7 @@ const HandlePaymentCart = () => {
 
       console.log("✅ Order created with ID:", order.order_id);
 
-      // 6️⃣ Create order_items & deduct stock
+      // 5️⃣ Create order_items & deduct stock
       for (const item of cartItems) {
         const pm = Array.isArray(item.pharmacy_medicine) 
           ? item.pharmacy_medicine[0] 
@@ -179,6 +169,7 @@ const HandlePaymentCart = () => {
           ? pm.medicine_reference[0] 
           : pm?.medicine_reference;
         const quantity = item.quantity;
+        const unitPrice = pm?.price || 0;
 
         if (!pm) {
           console.warn("⚠️ Skipping item with missing pharmacy_medicine data");
@@ -190,7 +181,8 @@ const HandlePaymentCart = () => {
           order_id: order.order_id,
           medicine_name: ref?.medicine_name || "Unknown",
           quantity,
-          unit_price: pm.price || 0,
+          unit_price: unitPrice,
+          subtotal: unitPrice * quantity,
           created_at: new Date().toISOString(),
         }]);
 
@@ -202,7 +194,7 @@ const HandlePaymentCart = () => {
           .eq("id", pm.id);
       }
 
-      // 7️⃣ Clear cart
+      // 6️⃣ Clear cart
       await supabase.from("cart_item").delete().eq("user_id", userId);
 
       Alert.alert(
@@ -254,11 +246,11 @@ const HandlePaymentCart = () => {
         <View style={styles.orderSummary}>
           <Text style={styles.summaryTitle}>Order Summary</Text>
           {cartItems.map((item, idx) => {
-            const pm = Array.isArray(item.pharmacy_medicine) 
-              ? item.pharmacy_medicine[0] 
+            const pm = Array.isArray(item.pharmacy_medicine)
+              ? item.pharmacy_medicine[0]
               : item.pharmacy_medicine;
-            const med = Array.isArray(pm?.medicine_reference) 
-              ? pm.medicine_reference[0] 
+            const med = Array.isArray(pm?.medicine_reference)
+              ? pm.medicine_reference[0]
               : pm?.medicine_reference;
             const qty = item.quantity;
             const price = pm?.price || 0;
