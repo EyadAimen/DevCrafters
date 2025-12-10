@@ -26,7 +26,6 @@ type Order = {
     status: string;
     total: number;
     pharmacy_name?: string;
-    shipping_address?: any;
     payment_method?: string;
     items: OrderItem[];
 };
@@ -69,7 +68,6 @@ export default function OrderDetailsPage() {
                 status,
                 total_amount,
                 pharmacy_name,
-                shipping_address,
                 payment_method,
                 order_items (
                     item_id,
@@ -93,7 +91,6 @@ export default function OrderDetailsPage() {
                     status: data.status?.charAt(0).toUpperCase() + data.status?.slice(1) || "Pending",
                     total: data.total_amount || 0,
                     pharmacy_name: data.pharmacy_name,
-                    shipping_address: data.shipping_address,
                     payment_method: data.payment_method,
                     items: data.order_items?.map((item: any) => ({
                         item_id: item.item_id,

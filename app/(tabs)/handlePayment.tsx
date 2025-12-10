@@ -53,6 +53,7 @@ export const handlePayment = async ({
 
     // 3️⃣ Initialize Payment Sheet
     const { error: initError } = await initPaymentSheet({
+      merchantDisplayName: "Pillora Pharmacy",
       paymentIntentClientSecret: clientSecret,
       returnURL: "yourapp://stripe-redirect",
     });

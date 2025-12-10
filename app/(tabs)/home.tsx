@@ -204,7 +204,7 @@ export default function Home() {
                   <Text style={styles.quickSubtitle}>Locate nearby stores</Text>
                 </Pressable>
 
-                <Pressable style={styles.quickCard}>
+                <Pressable style={styles.quickCard} onPress={() => router.push("/analytics")}>
                   <Image
                     source={require("../../assets/chartIconOrange.png")}
                     style={styles.quickIcon}
