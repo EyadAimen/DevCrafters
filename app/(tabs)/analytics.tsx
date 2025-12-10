@@ -294,10 +294,243 @@ const App1 = () => {
     return { dataPoints, labels };
   };
 
+  // to connect to medication_history table, do change
+  const fetchAnalyticsFromSupabase = async (period: PeriodType) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null; // No user
+
+    const now = new Date();
+    let periodStart: Date;
+
+    switch (period) {
+      case 'week':
+        periodStart = new Date(now);
+        periodStart.setDate(now.getDate() - 6);
+        break;
+      case 'month':
+        periodStart = new Date(now);
+        periodStart.setDate(now.getDate() - 27);
+        break;
+      case 'quarter':
+        periodStart = new Date(now);
+        periodStart.setMonth(now.getMonth() - 2);
+        periodStart.setDate(1);
+        break;
+      case 'year':
+        periodStart = new Date(now);
+        periodStart.setMonth(now.getMonth() - 9);
+        break;
+      default:
+        periodStart = new Date(now);
+        periodStart.setDate(now.getDate() - 6);
+    }
+
+    // Check if there are any records for this user in the current period
+    const { data: checkData, error: checkError } = await supabase
+      .from('medication_history')
+      .select('history_id')
+      .eq('user_id', user.id)
+      .gte('scheduled_for', periodStart.toISOString())
+      .lte('scheduled_for', now.toISOString())
+      .limit(1);
+
+    if (checkError) {
+      console.error('Error checking history:', checkError);
+      return null;
+    }
+
+    if (!checkData || checkData.length === 0) {
+      return null; // No records, use mock data
+    }
+
+    let previousPeriodStart: Date;
+    let previousPeriodEnd: Date;
+
+    switch (period) {
+      case 'week':
+        previousPeriodStart = new Date(periodStart);
+        previousPeriodStart.setDate(periodStart.getDate() - 7);
+        previousPeriodEnd = new Date(periodStart);
+        previousPeriodEnd.setDate(periodStart.getDate() - 1);
+        break;
+      case 'month':
+        previousPeriodStart = new Date(periodStart);
+        previousPeriodStart.setDate(periodStart.getDate() - 28);
+        previousPeriodEnd = new Date(periodStart);
+        previousPeriodEnd.setDate(periodStart.getDate() - 1);
+        break;
+      case 'quarter':
+        previousPeriodStart = new Date(periodStart);
+        previousPeriodStart.setMonth(periodStart.getMonth() - 3);
+        previousPeriodEnd = new Date(periodStart);
+        previousPeriodEnd.setDate(0);
+        break;
+      case 'year':
+        previousPeriodStart = new Date(periodStart);
+        previousPeriodStart.setMonth(periodStart.getMonth() - 12);
+        previousPeriodEnd = new Date(periodStart);
+        previousPeriodEnd.setDate(0);
+        break;
+      default:
+        previousPeriodStart = new Date(periodStart);
+        previousPeriodStart.setDate(periodStart.getDate() - 7);
+        previousPeriodEnd = new Date(periodStart);
+        previousPeriodEnd.setDate(periodStart.getDate() - 1);
+    }
+
+    // Fetch current period history
+    const { data: currentHistory, error: currentError } = await supabase
+      .from('medication_history')
+      .select('history_id, user_id, medicine_id, taken_at, scheduled_for, status, created_at')
+      .eq('user_id', user.id)
+      .gte('scheduled_for', periodStart.toISOString())
+      .lte('scheduled_for', now.toISOString())
+      .order('scheduled_for', { ascending: true });
+
+    if (currentError) {
+      console.error('Error fetching current history:', currentError);
+      return null;
+    }
+
+    // Fetch previous period history
+    const { data: previousHistory, error: previousError } = await supabase
+      .from('medication_history')
+      .select('history_id, user_id, medicine_id, taken_at, scheduled_for, status, created_at')
+      .eq('user_id', user.id)
+      .gte('scheduled_for', previousPeriodStart.toISOString())
+      .lte('scheduled_for', previousPeriodEnd.toISOString())
+      .order('scheduled_for', { ascending: true });
+
+    if (previousError) {
+      console.error('Error fetching previous history:', previousError);
+    }
+
+    // Get unique medicine_ids from current history
+    const medicineIds = [...new Set(currentHistory?.map(h => h.medicine_id) || [])];
+
+    // Fetch medicine names
+    const { data: medicines, error: medicinesError } = await supabase
+      .from('medicines')
+      .select('id, name')
+      .in('id', medicineIds);
+
+    if (medicinesError) {
+      console.error('Error fetching medicines:', medicinesError);
+    }
+
+    const medicineMap = new Map(medicines?.map(m => [m.id, m.name]) || []);
+
+    // Process medication breakdown
+    const medicationBreakdown = medicineIds.map(medId => {
+      const medHistory = currentHistory?.filter(h => h.medicine_id === medId) || [];
+      const total = medHistory.length;
+      const taken = medHistory.filter(h => h.status === 'taken').length;
+      const adherence = total > 0 ? Math.round((taken / total) * 100) : 0;
+
+      return {
+        name: medicineMap.get(medId) || `Medicine ${medId}`,
+        adherence
+      };
+    });
+
+    // Overall metrics
+    const totalScheduled = currentHistory?.length || 0;
+    const totalTaken = currentHistory?.filter(h => h.status === 'taken').length || 0;
+    const adherence = totalScheduled > 0 ? Math.round((totalTaken / totalScheduled) * 100) : 0;
+
+    // Previous period adherence
+    const prevTotal = previousHistory?.length || 0;
+    const prevTaken = previousHistory?.filter(h => h.status === 'taken').length || 0;
+    const previousAdherence = prevTotal > 0 ? Math.round((prevTaken / prevTotal) * 100) : 0;
+
+    // Calculate streak (last 30 days)
+    const last30Days = new Date(now);
+    last30Days.setDate(now.getDate() - 29);
+
+    const { data: recentHistory, error: recentError } = await supabase
+      .from('medication_history')
+      .select('history_id, user_id, medicine_id, taken_at, scheduled_for, status, created_at')
+      .eq('user_id', user.id)
+      .gte('scheduled_for', last30Days.toISOString())
+      .lte('scheduled_for', now.toISOString())
+      .order('scheduled_for', { ascending: false });
+
+    if (recentError) {
+      console.error('Error fetching recent history:', recentError);
+    }
+
+    let streak = 0;
+    if (recentHistory) {
+      // Group by date
+      const dailyMap = new Map<string, { total: number; taken: number }>();
+      recentHistory.forEach(h => {
+        const date = new Date(h.scheduled_for).toDateString();
+        const existing = dailyMap.get(date) || { total: 0, taken: 0 };
+        dailyMap.set(date, {
+          total: existing.total + 1,
+          taken: existing.taken + (h.status === 'taken' ? 1 : 0)
+        });
+      });
+
+      // Sort dates in descending order (most recent first)
+      const dates = Array.from(dailyMap.keys())
+        .map(date => ({ date, ...dailyMap.get(date)! }))
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+      for (const day of dates) {
+        if (day.total > 0 && day.taken === day.total) {
+          streak++;
+        } else {
+          break;
+        }
+      }
+    }
+
+    // Get period data points
+    const periodData = getPeriodData(period, currentHistory || []);
+    const dailyData = periodData.dataPoints;
+
+    // Set analytics data
+    const analyticsDataNew: AnalyticsData = {
+      adherence,
+      totalDoses: totalScheduled,
+      streak,
+      missedDoses: totalScheduled - totalTaken,
+      dailyData,
+      medicationBreakdown
+    };
+
+    // Set trend data
+    const hasImproved = adherence > previousAdherence;
+    const percentageChange = Math.abs(adherence - previousAdherence);
+    const message = hasImproved
+      ? `Your adherence has improved by ${percentageChange.toFixed(1)}% ${getPeriodLabel(period).toLowerCase()}. Keep up the great work!`
+      : `Your adherence has decreased by ${percentageChange.toFixed(1)}% ${getPeriodLabel(period).toLowerCase()}. Please consider maintaining regular medication intake.`;
+
+    const trendDataNew: TrendData = {
+      hasImproved,
+      percentageChange,
+      message,
+      previousAdherence,
+      currentAdherence: adherence
+    };
+
+    return { analyticsData: analyticsDataNew, trendData: trendDataNew };
+  };
+
   const fetchAnalytics = async () => {
     try {
       setLoading(true);
 
+      // Try to fetch from Supabase
+      const supabaseData = await fetchAnalyticsFromSupabase(selectedPeriod);
+      if (supabaseData) {
+        setAnalyticsData(supabaseData.analyticsData);
+        setTrendData(supabaseData.trendData);
+        return;
+      }
+
+      // Fallback to mock data if no real data exists
       let medicationBreakdown: Array<{name: string, adherence: number}> = [];
       let dataPoints: number[] = [];
       let streak: number;
