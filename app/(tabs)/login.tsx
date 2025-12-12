@@ -30,6 +30,27 @@ export default function Login() {
     setTimeout(() => setToast({ visible: false, message: "", type: "" }), 3000);
   };
 
+  const checkAdminLogin = async (email, password) => {
+    try {
+      const { data: admin, error } = await supabase
+        .from('pharmacy_admins')
+        .select('*')
+        .eq('email', email)
+        .single();
+
+      if (error || !admin) return null;
+
+      // Simple password check
+      if (admin.password_hash === password) {
+        return admin;
+      }
+
+      return null;
+    } catch (error) {
+      return null;
+    }
+  };
+
 
   const handleLogin = async () => {
     if (!formData.email || !formData.password) {
@@ -40,13 +61,35 @@ export default function Login() {
     setLoading(true);
 
     try {
+      //  pharmacy admin login
+      const admin = await checkAdminLogin(formData.email, formData.password);
+
+      if (admin) {
+        // Go to admin dashboard with admin data as params
+        showToast("Welcome to Admin Dashboard", "success");
+        setTimeout(() => {
+          router.push({
+            pathname: "/admin-dashboard",
+            params: {
+              adminId: admin.id,
+              pharmacyId: admin.pharmacy_id,
+              email: admin.email,
+              fullName: admin.full_name,
+              approvalStatus: admin.approval_status
+            }
+          });
+        }, 1500);
+        return;
+      }
+
+      // regular user login
       const { data, error } = await supabase.auth.signInWithPassword({
         email: formData.email,
         password: formData.password,
       });
 
       if (error) {
-        showToast(error.message, "error");
+        showToast("Invalid email or password", "error");
       } else {
         showToast("Welcome back!", "success");
         setTimeout(() => router.push("/home"), 1500);
@@ -130,6 +173,16 @@ export default function Login() {
               {loading ? "Signing In..." : "Sign In"}
             </Text>
           </Pressable>
+          {/* Admin Hint */}
+          <Text style={{
+            color: '#64748b',
+            fontSize: 12,
+            textAlign: 'center',
+            marginTop: 12,
+            fontStyle: 'italic'
+          }}>
+            Pharmacy owners: Use your admin credentials
+          </Text>
         </View>
 
         {/* Create New Account */}
