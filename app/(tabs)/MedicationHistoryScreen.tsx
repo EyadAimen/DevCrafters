@@ -7,6 +7,7 @@ import {
   TextInput,
   Pressable,
   Image,
+  Platform,
 } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -17,7 +18,7 @@ type MedicationRecord = {
   id: string;
   medicine_name: string;
   intake_time: string;
-  intake_date: Date; // keep actual date
+  intake_date: Date;
   dateHeader?: string;
 };
 
@@ -34,11 +35,16 @@ export default function MedicationHistoryScreen() {
   const [showEndPicker, setShowEndPicker] = useState(false);
 
   const [history, setHistory] = useState<MedicationRecord[]>([]);
+  const [filteredHistory, setFilteredHistory] = useState<MedicationRecord[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetchMedicationHistory();
   }, []);
+
+  useEffect(() => {
+    applyFilters();
+  }, [history, searchQuery, startDate, endDate]);
 
   const fetchMedicationHistory = async () => {
     setLoading(true);
@@ -70,34 +76,17 @@ export default function MedicationHistoryScreen() {
       }
 
       const records: MedicationRecord[] = [];
-      let currentDate = "";
 
       data.forEach((record: any) => {
         const intakeDate = new Date(record.intake_time);
-        const dateStr = intakeDate.toLocaleDateString("en-US", {
-          weekday: "long",
-          day: "numeric",
-          month: "long",
-          year: "numeric",
-        });
-
-        if (dateStr !== currentDate) {
-          records.push({
-            id: `date-${dateStr}`,
-            medicine_name: "",
-            intake_time: "",
-            intake_date: intakeDate,
-            dateHeader: dateStr,
-          });
-          currentDate = dateStr;
-        }
-
+        
         records.push({
           id: record.id,
           medicine_name: record.medicine_name || "Unknown",
           intake_time: intakeDate.toLocaleTimeString([], {
             hour: "2-digit",
             minute: "2-digit",
+            hour12: true,
           }),
           intake_date: intakeDate,
         });
@@ -112,70 +101,121 @@ export default function MedicationHistoryScreen() {
     }
   };
 
-  // --------------------------
-  //        FILTER LOGIC
-  // --------------------------
-  const filteredHistory = (() => {
-    if (!searchQuery && !startDate && !endDate) return history;
+  const applyFilters = () => {
+    if (history.length === 0) {
+      setFilteredHistory([]);
+      return;
+    }
 
-    const groupedByDate: { [date: string]: MedicationRecord[] } = {};
+    // Step 1: Filter by date range
+    let dateFiltered = [...history];
+    
+    if (startDate) {
+      const normalizedStart = new Date(startDate);
+      normalizedStart.setHours(0, 0, 0, 0);
+      
+      dateFiltered = dateFiltered.filter(record => {
+        const recordDate = new Date(record.intake_date);
+        recordDate.setHours(0, 0, 0, 0);
+        return recordDate >= normalizedStart;
+      });
+    }
 
-    history.forEach((record) => {
+    if (endDate) {
+      const normalizedEnd = new Date(endDate);
+      normalizedEnd.setHours(23, 59, 59, 999);
+      
+      dateFiltered = dateFiltered.filter(record => {
+        const recordDate = new Date(record.intake_date);
+        return recordDate <= normalizedEnd;
+      });
+    }
+
+    // Step 2: Filter by search query
+    let searchFiltered = dateFiltered;
+    if (searchQuery.trim()) {
+      searchFiltered = dateFiltered.filter(record =>
+        record.medicine_name.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    }
+
+    // Step 3: Group by date and add headers
+    const grouped: { [date: string]: MedicationRecord[] } = {};
+    
+    searchFiltered.forEach((record) => {
       const dateKey = record.intake_date.toDateString();
-
-      if (!groupedByDate[dateKey]) groupedByDate[dateKey] = [];
-
-      // Only push real medicine records (skip existing date headers)
-      if (!record.dateHeader) groupedByDate[dateKey].push(record);
+      if (!grouped[dateKey]) grouped[dateKey] = [];
+      grouped[dateKey].push(record);
     });
 
-    // Normalize start and end dates
-    const normalizedStart = startDate ? new Date(startDate) : null;
-    if (normalizedStart) normalizedStart.setHours(0, 0, 0, 0);
-
-    const normalizedEnd = endDate ? new Date(endDate) : null;
-    if (normalizedEnd) normalizedEnd.setHours(23, 59, 59, 999);
-
+    // Step 4: Build final result with date headers
     const result: MedicationRecord[] = [];
-
-    Object.keys(groupedByDate)
-      .sort((a, b) => new Date(b).getTime() - new Date(a).getTime()) // sort descending
+    
+    Object.keys(grouped)
+      .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())
       .forEach((dateKey) => {
-        const records = groupedByDate[dateKey];
-
-        // Filter by search query
-        const filteredRecords = records.filter((rec) =>
-          rec.medicine_name.toLowerCase().includes(searchQuery.toLowerCase())
-        );
-
-        // Filter by date range
         const dateObj = new Date(dateKey);
-        const inRange =
-          (!normalizedStart || dateObj >= normalizedStart) &&
-          (!normalizedEnd || dateObj <= normalizedEnd);
+        
+        const dateHeader = dateObj.toLocaleDateString("en-US", {
+          weekday: "long",
+          day: "numeric",
+          month: "long",
+          year: "numeric",
+        });
+        
+        result.push({
+          id: `date-${dateKey}`,
+          medicine_name: "",
+          intake_time: "",
+          intake_date: dateObj,
+          dateHeader: dateHeader,
+        });
 
-        if (filteredRecords.length > 0 && inRange) {
-          // Add date header
-          result.push({
-            id: `date-${dateKey}`,
-            medicine_name: "",
-            intake_time: "",
-            intake_date: dateObj,
-            dateHeader: dateObj.toLocaleDateString("en-US", {
-              weekday: "long",
-              day: "numeric",
-              month: "long",
-              year: "numeric",
-            }),
-          });
-
-          // Add filtered medicine records
-          result.push(...filteredRecords);
-        }
+        result.push(...grouped[dateKey]);
       });
 
-    return result;
-  })();
+    setFilteredHistory(result);
+  };
+
+  // Date picker handlers - Using local device time
+  const onStartDateChange = (event: any, selectedDate?: Date) => {
+    setShowStartPicker(false);
+    if (selectedDate) {
+      selectedDate.setHours(0, 0, 0, 0);
+      setStartDate(selectedDate);
+    }
+  };
+
+  const onEndDateChange = (event: any, selectedDate?: Date) => {
+    setShowEndPicker(false);
+    if (selectedDate) {
+      selectedDate.setHours(23, 59, 59, 999);
+      setEndDate(selectedDate);
+    }
+  };
+
+  const clearFilters = () => {
+    setStartDate(null);
+    setEndDate(null);
+    setSearchQuery("");
+  };
+
+  const formatDateForDisplay = (date: Date | null): string => {
+    if (!date) return "Select Date";
+    
+    return date.toLocaleDateString("en-US", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+  };
+
+  const getWeekday = (date: Date | null): string => {
+    if (!date) return "";
+    return date.toLocaleDateString("en-US", { 
+      weekday: "short" 
+    });
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -213,7 +253,7 @@ export default function MedicationHistoryScreen() {
 
           <Pressable
             style={[styles.tabButton, activeTab === "reports" && styles.activeTab]}
-            onPress={() => setActiveTab("reports")}
+            onPress={() => router.push("/(tabs)/MedicalReports")}
           >
             <Text
               style={[
@@ -237,7 +277,10 @@ export default function MedicationHistoryScreen() {
               onPress={() => setShowStartPicker(true)}
             >
               <Text style={styles.dateFilterText}>
-                {startDate ? startDate.toLocaleDateString("en-US") : "Start Date"}
+                {formatDateForDisplay(startDate)}
+              </Text>
+              <Text style={styles.datePickerHint}>
+                {startDate ? getWeekday(startDate) : "Start Date"}
               </Text>
             </Pressable>
 
@@ -247,45 +290,21 @@ export default function MedicationHistoryScreen() {
               onPress={() => setShowEndPicker(true)}
             >
               <Text style={styles.dateFilterText}>
-                {endDate ? endDate.toLocaleDateString("en-US") : "End Date"}
+                {formatDateForDisplay(endDate)}
+              </Text>
+              <Text style={styles.datePickerHint}>
+                {endDate ? getWeekday(endDate) : "End Date"}
               </Text>
             </Pressable>
           </View>
 
-          {showStartPicker && (
-            <DateTimePicker
-              value={startDate || new Date()}
-              mode="date"
-              display="calendar"
-              onChange={(event, date) => {
-                setShowStartPicker(false);
-                if (date) setStartDate(date);
-              }}
-            />
-          )}
-
-          {showEndPicker && (
-            <DateTimePicker
-              value={endDate || new Date()}
-              mode="date"
-              display="calendar"
-              onChange={(event, date) => {
-                setShowEndPicker(false);
-                if (date) setEndDate(date);
-              }}
-            />
-          )}
-
           {/* Clear Filter */}
-          {(startDate || endDate) && (
+          {(startDate || endDate || searchQuery) && (
             <Pressable
               style={styles.clearButton}
-              onPress={() => {
-                setStartDate(null);
-                setEndDate(null);
-              }}
+              onPress={clearFilters}
             >
-              <Text style={styles.clearButtonText}>Clear Filter</Text>
+              <Text style={styles.clearButtonText}>Clear All Filters</Text>
             </Pressable>
           )}
         </View>
@@ -294,19 +313,33 @@ export default function MedicationHistoryScreen() {
         <View style={[styles.card, { marginTop: 16 }]}>
           <TextInput
             style={styles.searchInput}
-            placeholder="Search by medicine name, dosage, or notes"
+            placeholder="Search by medicine name"
             value={searchQuery}
             onChangeText={setSearchQuery}
             placeholderTextColor="#999"
           />
         </View>
 
+        {/* Results Count */}
+        <View style={styles.resultsContainer}>
+          <Text style={styles.resultsText}>
+            {filteredHistory.filter(r => !r.dateHeader).length} records found
+          </Text>
+          <Pressable onPress={fetchMedicationHistory}>
+            <Text style={styles.refreshText}>🔄 Refresh</Text>
+          </Pressable>
+        </View>
+
         {/* History List */}
-        <View style={[styles.card, { marginTop: 16 }]}>
+        <View style={[styles.card, { marginTop: 8 }]}>
           {loading ? (
             <Text style={styles.loadingText}>Loading...</Text>
           ) : filteredHistory.length === 0 ? (
-            <Text style={styles.emptyText}>No intake records found.</Text>
+            <Text style={styles.emptyText}>
+              {searchQuery || startDate || endDate 
+                ? "No records match your filters" 
+                : "No intake records found"}
+            </Text>
           ) : (
             filteredHistory.map((record) => {
               if (record.dateHeader) {
@@ -331,6 +364,56 @@ export default function MedicationHistoryScreen() {
           )}
         </View>
       </ScrollView>
+
+      {/* Date Pickers - Centered with black text */}
+      {showStartPicker && (
+        <View style={styles.datePickerOverlay}>
+          <View style={styles.datePickerContainer}>
+            <Text style={styles.datePickerTitle}>Select Start Date</Text>
+            <DateTimePicker
+              value={startDate || new Date()}
+              mode="date"
+              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+              onChange={onStartDateChange}
+              maximumDate={endDate || new Date()}
+              themeVariant="light"
+              style={styles.datePicker}
+              textColor="#000000"
+            />
+            <Pressable
+              style={styles.datePickerCloseButton}
+              onPress={() => setShowStartPicker(false)}
+            >
+              <Text style={styles.datePickerCloseText}>Close</Text>
+            </Pressable>
+          </View>
+        </View>
+      )}
+
+      {showEndPicker && (
+        <View style={styles.datePickerOverlay}>
+          <View style={styles.datePickerContainer}>
+            <Text style={styles.datePickerTitle}>Select End Date</Text>
+            <DateTimePicker
+              value={endDate || new Date()}
+              mode="date"
+              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+              onChange={onEndDateChange}
+              maximumDate={new Date()}
+              minimumDate={startDate || undefined}
+              themeVariant="light"
+              style={styles.datePicker}
+              textColor="#000000"
+            />
+            <Pressable
+              style={styles.datePickerCloseButton}
+              onPress={() => setShowEndPicker(false)}
+            >
+              <Text style={styles.datePickerCloseText}>Close</Text>
+            </Pressable>
+          </View>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
@@ -390,7 +473,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "bold",
     color: "#0f172a",
-    marginBottom: 12,
+    marginBottom: 8,
   },
   dateRow: {
     flexDirection: "row",
@@ -399,15 +482,24 @@ const styles = StyleSheet.create({
   dateFilterButton: {
     flex: 1,
     backgroundColor: "#f1f5f9",
-    padding: 12,
+    padding: 16,
     borderRadius: 12,
     marginBottom: 12,
     marginHorizontal: 4,
     alignItems: "center",
+    minHeight: 70,
+    justifyContent: "center",
   },
   dateFilterText: {
     color: "#0f172a",
     fontSize: 16,
+    fontWeight: "500",
+  },
+  datePickerHint: {
+    fontSize: 12,
+    color: "#0ea5e9",
+    marginTop: 4,
+    fontWeight: "500",
   },
   clearButton: {
     backgroundColor: "#ef4444",
@@ -431,19 +523,42 @@ const styles = StyleSheet.create({
     color: "#1a1a1a",
   },
 
-  dateSection: { marginBottom: 12 },
+  resultsContainer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginHorizontal: 16,
+    marginTop: 12,
+    marginBottom: 4,
+  },
+  resultsText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#0f172a",
+  },
+  refreshText: {
+    fontSize: 12,
+    color: "#0ea5e9",
+    fontWeight: "500",
+  },
+
+  dateSection: { 
+    marginBottom: 12,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: "#e2e8f0",
+  },
   dateText: {
     fontSize: 14,
     fontWeight: "bold",
-    color: "#64748b",
-    marginBottom: 4,
+    color: "#0ea5e9",
   },
 
   medicationCard: {
-    backgroundColor: "#fff",
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
+    backgroundColor: "#f8fafc",
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 8,
     borderWidth: 1,
     borderColor: "#e2e8f0",
   },
@@ -462,5 +577,48 @@ const styles = StyleSheet.create({
     color: "#64748b",
     fontSize: 16,
   },
-});
 
+  // Date Picker Styles
+  datePickerOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  datePickerContainer: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: 24,
+    alignItems: 'center',
+    width: '90%',
+    maxWidth: 400,
+  },
+  datePickerTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#0f172a',
+    marginBottom: 20,
+  },
+  datePicker: {
+    width: '100%',
+    height: Platform.OS === 'ios' ? 200 : undefined,
+  },
+  datePickerCloseButton: {
+    backgroundColor: '#0ea5e9',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    marginTop: 20,
+    width: '100%',
+    alignItems: 'center',
+  },
+  datePickerCloseText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+});
