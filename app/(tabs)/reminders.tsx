@@ -49,9 +49,11 @@ const getNextDoseText = (scheduledTime) => {
   const now = new Date();
   const [hours, minutes] = scheduledTime.split(':').map(Number);
 
+  // Create today's reminder time
   const reminderTimeToday = new Date();
   reminderTimeToday.setHours(hours, minutes, 0, 0);
 
+  // Create tomorrow's reminder time
   const reminderTimeTomorrow = new Date();
   reminderTimeTomorrow.setDate(reminderTimeTomorrow.getDate() + 1);
   reminderTimeTomorrow.setHours(hours, minutes, 0, 0);
@@ -62,9 +64,13 @@ const getNextDoseText = (scheduledTime) => {
     hour12: true
   });
 
-  return reminderTimeToday > now
-    ? `Today at ${timeString}`
-    : `Tomorrow at ${timeString}`;
+  // Check if today's time has already passed
+  if (reminderTimeToday > now) {
+    return `Today at ${timeString}`;
+  } else {
+    // Today's time has passed, show tomorrow
+    return `Tomorrow at ${timeString}`;
+  }
 };
 
 const getFrequencyTimeSlots = (frequency) => {
@@ -74,6 +80,7 @@ const getFrequencyTimeSlots = (frequency) => {
     default: return 1;
   }
 };
+
 
 // ============= TOGGLE SWITCH COMPONENT =============
 const ToggleSwitch = ({ isOn, onToggle }) => (
@@ -631,7 +638,7 @@ export default function Reminders() {
     }
   };
 
-  // MOVE THIS FUNCTION UP HERE:
+
   const fetchReminders = async (shouldScheduleNotifications = true) => {
     setLoadingReminders(true);
     try {
@@ -679,6 +686,42 @@ export default function Reminders() {
       setLoadingReminders(false);
     }
   };
+
+  // Get the next upcoming reminder
+  const getNextReminder = () => {
+    if (!reminders || reminders.length === 0) return null;
+
+    const now = new Date();
+    const currentHour = now.getHours();
+    const currentMinute = now.getMinutes();
+
+    let nextReminder = null;
+    let smallestDiff = Infinity;
+
+    for (const reminder of reminders) {
+      if (!reminder.scheduled_time) continue;
+
+      const [reminderHour, reminderMinute] = reminder.scheduled_time.split(':').map(Number);
+
+      // Calculate minutes until this reminder today
+      let minutesUntil = (reminderHour * 60 + reminderMinute) - (currentHour * 60 + currentMinute);
+
+      // If reminder has already passed today, check for tomorrow
+      if (minutesUntil < 0) {
+        minutesUntil += 24 * 60; // Add 24 hours
+      }
+
+      // Find the closest upcoming reminder
+      if (minutesUntil < smallestDiff) {
+        smallestDiff = minutesUntil;
+        nextReminder = reminder;
+      }
+    }
+
+    return nextReminder;
+  };
+
+  const nextReminder = getNextReminder();
 
 
 
@@ -972,7 +1015,7 @@ export default function Reminders() {
               <StatCard
                 icon={require("../../assets/clock.png")}
                 label="Next Dose"
-                value={reminders.length > 0 ? getNextDoseText(reminders[0].scheduled_time) : 'No reminders'}
+                value={nextReminder ? getNextDoseText(nextReminder.scheduled_time) : 'No upcoming reminders'}
               />
             </View>
 
