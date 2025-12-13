@@ -26,6 +26,7 @@ import { useRouter } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
 import * as DocumentPicker from 'expo-document-picker';
 import * as MediaLibrary from 'expo-media-library';
+import { Feather } from "@expo/vector-icons";
 
 const { width: screenWidth } = Dimensions.get('window');
 
@@ -81,6 +82,38 @@ const MedicalReports = () => {
     
     // Default parsing
     return new Date(dateString);
+  };
+
+  // Helper to decode base64 to Uint8Array (replaces atob)
+  const decodeBase64ToUint8Array = (base64: string): Uint8Array => {
+    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=";
+    let outputLength = (base64.length / 4) * 3;
+    if (base64.endsWith("==")) outputLength -= 2;
+    else if (base64.endsWith("=")) outputLength -= 1;
+
+    const bytes = new Uint8Array(outputLength);
+    let byteIndex = 0;
+
+    for (let i = 0; i < base64.length; i += 4) {
+      const enc1 = chars.indexOf(base64[i]);
+      const enc2 = chars.indexOf(base64[i + 1]);
+      const enc3 = chars.indexOf(base64[i + 2]);
+      const enc4 = chars.indexOf(base64[i + 3]);
+
+      const triplet = (enc1 << 18) | (enc2 << 12) | ((enc3 & 63) << 6) | (enc4 & 63);
+
+      if (enc3 === 64) {
+        bytes[byteIndex++] = (triplet >> 16) & 255;
+      } else if (enc4 === 64) {
+        bytes[byteIndex++] = (triplet >> 16) & 255;
+        bytes[byteIndex++] = (triplet >> 8) & 255;
+      } else {
+        bytes[byteIndex++] = (triplet >> 16) & 255;
+        bytes[byteIndex++] = (triplet >> 8) & 255;
+        bytes[byteIndex++] = triplet & 255;
+      }
+    }
+    return bytes;
   };
 
   useFocusEffect(
@@ -416,12 +449,7 @@ const MedicalReports = () => {
       
       console.log('Uploading to Supabase storage:', filePath);
       
-      const byteCharacters = atob(fileContent);
-      const byteNumbers = new Array(byteCharacters.length);
-      for (let i = 0; i < byteCharacters.length; i++) {
-        byteNumbers[i] = byteCharacters.charCodeAt(i);
-      }
-      const byteArray = new Uint8Array(byteNumbers);
+      const byteArray = decodeBase64ToUint8Array(fileContent);
       
       let storageUrl = localUri;
       let uploadSuccess = false;
@@ -1061,6 +1089,16 @@ const MedicalReports = () => {
                             )}
                           </View>
                           <View style={styles.reportActions}>
+                            <TouchableOpacity 
+                              style={styles.actionButton}
+                              onPress={() => router.push({
+                                pathname: '/(tabs)/shareReport',
+                                params: { report: JSON.stringify(report) }
+                              })}
+                            >
+                              <Feather name="share-2" size={20} color="#0ea5e9" />
+                            </TouchableOpacity>
+
                             <TouchableOpacity 
                               style={styles.actionButton}
                               onPress={() => downloadPDF(report)}
