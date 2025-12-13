@@ -99,7 +99,8 @@ const OnlineRefillOrder3 = () => {
     const orderData = {
       user_id: userId,
       pharmacy_name: pharmacyName || "Unknown Pharmacy",
-      status: "completed",
+      pharmacy_id: pharmacyId,
+      status: "pending",
       total_amount: totalPriceNum,
       quantity: quantityNum,
       medicine_name: medicineName || "Unknown Medicine",
