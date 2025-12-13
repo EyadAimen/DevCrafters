@@ -42,8 +42,7 @@ export default function OrderDetails() {
       case 'pending': return "#f59e0b";
       case 'processing':
       case 'preparing': return "#3b82f6";
-      case 'ready':
-      case 'completed': return "#10b981";
+      case 'ready': return "#10b981";
       case 'cancelled': return "#ef4444";
       case 'collected': return "#8b5cf6";
       default: return "#64748b";
@@ -103,55 +102,74 @@ export default function OrderDetails() {
     };
   }, [order.rawData.order_id]);
 
+  console.log('RAW DATA STRUCTURE:', JSON.stringify(order.rawData, null, 2));
+
   const updateOrderStatus = async (newStatus) => {
     try {
       setUpdating(true);
 
-      console.log('Order ID to update:', order.rawData.order_id);
-      console.log('New status:', newStatus);
+      // DEBUG: See what's actually in rawData
+      console.log('Full rawData:', order.rawData);
+      console.log('Available keys:', Object.keys(order.rawData));
 
-      // Update the order status
-      const { data, error } = await supabase
+      // The correct ID might be:
+      // 1. order.rawData.id
+      // 2. order.rawData.order_id (but lowercase)
+      // 3. order.id (from params)
+      // 4. Extract from "ORD-XXXX" format
+
+      // Try to get the actual order ID
+      let actualOrderId;
+
+      // Option 1: Check if it's in rawData
+      if (order.rawData.order_id) {
+        actualOrderId = order.rawData.order_id;
+      }
+      // Option 2: Check if it's just 'id'
+      else if (order.rawData.id) {
+        actualOrderId = order.rawData.id;
+      }
+      // Option 3: Extract from the formatted ID "ORD-XXXX"
+      else {
+        // If order.id is something like "ORD-A1B2C3D4"
+        const match = order.id.match(/ORD-(\w+)/);
+        if (match && match[1]) {
+          // This might be the actual UUID or part of it
+          actualOrderId = match[1];
+        } else {
+          actualOrderId = order.id; // Last resort
+        }
+      }
+
+      console.log('Using order ID:', actualOrderId);
+
+      // SIMPLE UPDATE
+      const { error } = await supabase
         .from('orders')
         .update({
           status: newStatus,
           updated_at: new Date().toISOString()
         })
-        .eq('order_id', order.rawData.order_id)
-        .select();
+        .eq('order_id', actualOrderId);  // Use the correct ID
 
       if (error) {
         console.error('Update error:', error);
         throw error;
       }
 
-      console.log('Update successful:', data);
+      console.log('Update successful!');
 
       // Update local state
       setCurrentStatus(newStatus);
 
-      if (data && data[0]) {
-        setCurrentOrder(data[0]);
-      }
+      Alert.alert('Success', `Status updated to ${newStatus}`);
 
-      Alert.alert('Success', `Order status updated to ${newStatus}`, [
-        {
-          text: 'OK',
-          onPress: () => router.back()
-        }
-      ]);
+      // Optional: Go back after success
+      setTimeout(() => router.back(), 1500);
 
     } catch (error) {
       console.error('Update failed:', error);
-
-      if (error.message?.includes('policy') || error.code === '42501') {
-        Alert.alert(
-          'Permission Denied',
-          'You do not have permission to update this order. Check RLS policies.'
-        );
-      } else {
-        Alert.alert('Error', error.message || 'Failed to update order status');
-      }
+      Alert.alert('Error', 'Failed to update status');
     } finally {
       setUpdating(false);
     }
@@ -319,7 +337,7 @@ export default function OrderDetails() {
               </TouchableOpacity>
             )}
 
-            {currentStatus !== 'cancelled' && currentStatus !== 'collected' && (
+            {currentStatus === 'pending' && (
               <TouchableOpacity
                 style={styles.secondaryButton}
                 onPress={handleCancelOrder}
@@ -330,6 +348,8 @@ export default function OrderDetails() {
             )}
           </View>
         </LinearGradient>
+
+
       </ScrollView>
     </SafeAreaView>
   );
@@ -507,7 +527,7 @@ const styles = StyleSheet.create({
     fontWeight: "500",
     color: "#ef4444",
   },
-  statusBadgeSmall:
+  statusBadgeSmall:{
     borderRadius: 12,
     paddingHorizontal: 8,
     paddingVertical: 4,
