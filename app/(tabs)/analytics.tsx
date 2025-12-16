@@ -925,7 +925,7 @@ const App1 = () => {
   return (
     <SafeAreaView style={styles.app}>
       <View style={styles.view}>
-        <ScrollView style={styles.scrollview} showsVerticalScrollIndicator={false}>
+        <ScrollView style={styles.scrollview} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 80 }}>
           <View style={styles.analyticsscreen}>
             <View style={styles.container}>
               <View style={styles.heading1}>
@@ -1014,24 +1014,6 @@ const App1 = () => {
               </View>
               <View style={styles.tabPanel}>
                 {renderTabContent()}
-              </View>
-            </View>
-            <View style={[styles.card11, styles.cardBorder]}>
-              <View style={[styles.analyticsscreen20, styles.analyticsscreenLayout]}>
-                <Text style={[styles.dailyAdherenceRate, styles.adherenceTypo]}>Export Reports</Text>
-              </View>
-              <View style={styles.analyticsscreen21}>
-                <Text style={[styles.downloadYourMedication, styles.text3Position]}>Download your medication history and adherence reports to share with your healthcare provider</Text>
-              </View>
-              <View style={styles.analyticsscreen21}>
-                <View style={[styles.button5, styles.buttonLayout]}>
-                  <Image style={styles.icon7} resizeMode="cover" />
-                  <Text style={[styles.pdf, styles.pdfTypo]}>PDF</Text>
-                </View>
-                <View style={[styles.button6, styles.buttonLayout]}>
-                  <Image style={styles.icon7} resizeMode="cover" />
-                  <Text style={[styles.pdf, styles.pdfTypo]}>CSV</Text>
-                </View>
               </View>
             </View>
           </View>
