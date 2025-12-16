@@ -2,9 +2,51 @@ import * as React from "react";
 import { useState, useEffect } from "react";
 import {Text, StyleSheet, View, Pressable, Image, ScrollView, Dimensions} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import Svg, { Path, G } from "react-native-svg";
+import Svg, { Path, G, Circle, Polygon, Line, Rect } from "react-native-svg";
 import BottomNavigation from "../../components/BottomNavigation";
 import { supabase } from "../../lib/supabase";
+
+const AdherenceIcon = ({ color = "#0ea5e9", size = 16 }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Circle cx="12" cy="12" r="10" stroke={color} strokeWidth="2" />
+    <Circle cx="12" cy="12" r="6" stroke={color} strokeWidth="2" />
+    <Circle cx="12" cy="12" r="2" fill={color} />
+  </Svg>
+);
+
+const DosesIcon = ({ color = "#0ea5e9", size = 16 }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Rect x="3" y="3" width="18" height="18" rx="4" stroke={color} strokeWidth="2" />
+    <Line x1="7" y1="7" x2="17" y2="17" stroke={color} strokeWidth="2" />
+    <Line x1="17" y1="7" x2="7" y2="17" stroke={color} strokeWidth="2" />
+    <Circle cx="12" cy="12" r="2" fill={color} />
+  </Svg>
+);
+
+const StreakIcon = ({ color = "#0ea5e9", size = 16 }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Path d="M12 2L14.5 8.5L21 9L16 13.5L17.5 21L12 17L6.5 21L8 13.5L3 9L9.5 8.5L12 2Z" 
+          fill={color} stroke={color} strokeWidth="1.5" />
+  </Svg>
+);
+
+const MissedIcon = ({ color = "#0ea5e9", size = 16 }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Circle cx="12" cy="12" r="10" stroke={color} strokeWidth="2" />
+    <Line x1="8" y1="8" x2="16" y2="16" stroke={color} strokeWidth="2" />
+    <Line x1="16" y1="8" x2="8" y2="16" stroke={color} strokeWidth="2" />
+  </Svg>
+);
+
+const ChangeIcon = ({ isPositive = true, size = 12 }) => (
+  <Svg width={size} height={size} viewBox="0 0 12 12" fill="none">
+    {isPositive ? (
+      <Path d="M6 3L9 8H3L6 3Z" fill="#00a63e" />
+    ) : (
+      <Path d="M6 9L3 4H9L6 9Z" fill="#ef4444" />
+    )}
+  </Svg>
+);
 
 type PeriodType = 'week' | 'month' | 'quarter' | 'year';
 type TabType = 'adherence' | 'intake' | 'trends';
@@ -949,23 +991,26 @@ const App1 = () => {
                 <Text style={selectedPeriod === 'year' ? [styles.week, styles.weekTypo] : [styles.month, styles.weekTypo]}>year</Text>
               </Pressable>
             </View>
+
             <View style={styles.container3}>
               <View style={styles.analyticCard}>
                 <View style={styles.analyticsscreen2}>
-                  <Image style={styles.icon} resizeMode="cover" />
+                  <AdherenceIcon />
                   <Text style={styles.adherence}>Adherence</Text>
                 </View>
                 <View style={styles.analyticsscreen3}>
                   <Text style={styles.text}>{analyticsData.adherence}%</Text>
                   <View style={styles.changeContainer}>
-                    <Image style={styles.icon2} resizeMode="cover" />
-                    <Text style={styles.text3}>{Math.abs(analyticsData.adherence - 91)}%</Text>
+                    <ChangeIcon isPositive={analyticsData.adherence >= 91} />
+                    <Text style={[styles.text3, { color: analyticsData.adherence >= 91 ? '#00a63e' : '#ef4444' }]}>
+                      {Math.abs(analyticsData.adherence - 91)}%
+                    </Text>
                   </View>
                 </View>
               </View>
               <View style={styles.analyticCard}>
                 <View style={styles.analyticsscreen2}>
-                  <Image style={styles.icon} resizeMode="cover" />
+                  <DosesIcon />
                   <Text style={styles.adherence}>Total Doses</Text>
                 </View>
                 <View style={styles.analyticsscreen5}>
@@ -977,7 +1022,7 @@ const App1 = () => {
               </View>
               <View style={styles.analyticCard}>
                 <View style={styles.analyticsscreen2}>
-                  <Image style={styles.icon} resizeMode="cover" />
+                  <StreakIcon />
                   <Text style={styles.adherence}>Streak</Text>
                 </View>
                 <View style={styles.analyticsscreen5}>
@@ -989,7 +1034,7 @@ const App1 = () => {
               </View>
               <View style={styles.analyticCard}>
                 <View style={styles.analyticsscreen2}>
-                  <Image style={styles.icon} resizeMode="cover" />
+                  <MissedIcon />
                   <Text style={styles.adherence}>Missed</Text>
                 </View>
                 <View style={styles.analyticsscreen5}>
@@ -1248,10 +1293,6 @@ const styles = StyleSheet.create({
     height: 16,
     flexDirection: "row",
     alignItems: "center"
-  },
-  icon: {
-    height: 14,
-    width: 14
   },
   adherence: {
     color: "#64748b",
