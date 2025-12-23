@@ -19,7 +19,6 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Print from 'expo-print';
-import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system';
 import { supabase } from "../../lib/supabase";
 import { useRouter } from "expo-router";
@@ -59,19 +58,19 @@ const MedicalReports = () => {
   const [deleting, setDeleting] = useState<string | null>(null);
   const [bucketReady, setBucketReady] = useState(false);
   const [permissionResponse, requestPermission] = MediaLibrary.usePermissions();
-  
+
   const scrollViewRef = useRef<ScrollView>(null);
 
   // Helper function to parse dates from database
   const parseDateFromDB = (dateString: string): Date => {
     if (!dateString) return new Date();
-    
+
     // If date is in YYYY-MM-DD format (from our save)
     if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
       const [year, month, day] = dateString.split('-').map(Number);
       return new Date(year, month - 1, day);
     }
-    
+
     // If date is ISO string (contains T)
     if (dateString.includes('T')) {
       const date = new Date(dateString);
@@ -79,7 +78,7 @@ const MedicalReports = () => {
       const timezoneOffset = date.getTimezoneOffset() * 60000;
       return new Date(date.getTime() + timezoneOffset);
     }
-    
+
     // Default parsing
     return new Date(dateString);
   };
@@ -134,7 +133,7 @@ const MedicalReports = () => {
     if (searchQuery.trim() === '') {
       setFilteredReports(reports);
     } else {
-      const filtered = reports.filter(report => 
+      const filtered = reports.filter(report =>
         report.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         report.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         `${formatDateForDisplay(parseDateFromDB(report.start_date))} - ${formatDateForDisplay(parseDateFromDB(report.end_date))}`
@@ -164,7 +163,7 @@ const MedicalReports = () => {
       const { data, error } = await supabase.storage
         .from('medical-reports')
         .list('', { limit: 1 });
-      
+
       if (error) {
         console.log('Bucket check error:', error.message);
         setBucketReady(false);
@@ -207,11 +206,11 @@ const MedicalReports = () => {
 
       const startDate = new Date(start);
       startDate.setHours(0, 0, 0, 0);
-      
+
       const endDate = new Date(end);
       endDate.setHours(23, 59, 59, 999);
 
-      console.log('Fetching medication history from:', 
+      console.log('Fetching medication history from:',
         startDate.toLocaleString(), 'to', endDate.toLocaleString());
 
       const startTimestamp = startDate.getTime();
@@ -271,9 +270,9 @@ const MedicalReports = () => {
     try {
       console.log('Generating PDF for date range:', formatDateForDisplay(startDate), 'to', formatDateForDisplay(endDate));
       const medicationHistory = await fetchMedicationHistory(startDate, endDate);
-      
+
       console.log('Medication history records:', medicationHistory.length);
-      
+
       if (medicationHistory.length === 0) {
         Alert.alert("No Data", "No medication history found for the selected date range. Please select a different range.");
         return;
@@ -433,7 +432,7 @@ const MedicalReports = () => {
 
       const localFileName = `Medication_Report_${formatDateForFileName(startDate)}_to_${formatDateForFileName(endDate)}.pdf`;
       const localUri = FileSystem.cacheDirectory + localFileName;
-      
+
       console.log('Copying PDF to local cache:', localUri);
       await FileSystem.copyAsync({
         from: uri,
@@ -446,14 +445,14 @@ const MedicalReports = () => {
 
       const fileName = `medical_report_${userId}_${Date.now()}.pdf`;
       const filePath = `${userId}/${fileName}`;
-      
+
       console.log('Uploading to Supabase storage:', filePath);
-      
+
       const byteArray = decodeBase64ToUint8Array(fileContent);
-      
+
       let storageUrl = localUri;
       let uploadSuccess = false;
-      
+
       if (bucketReady) {
         try {
           const { data: storageData, error: storageError } = await supabase.storage
@@ -472,7 +471,7 @@ const MedicalReports = () => {
           const { data: urlData } = supabase.storage
             .from('medical-reports')
             .getPublicUrl(filePath);
-          
+
           storageUrl = urlData.publicUrl;
           uploadSuccess = true;
           console.log('✅ Uploaded to Supabase storage:', storageUrl);
@@ -486,14 +485,14 @@ const MedicalReports = () => {
 
       console.log('Saving to database...');
       // Save dates as YYYY-MM-DD format (no timezone)
-      const startDateStr = startDate.getFullYear() + '-' + 
-                         String(startDate.getMonth() + 1).padStart(2, '0') + '-' + 
-                         String(startDate.getDate()).padStart(2, '0');
-      
-      const endDateStr = endDate.getFullYear() + '-' + 
-                       String(endDate.getMonth() + 1).padStart(2, '0') + '-' + 
-                       String(endDate.getDate()).padStart(2, '0');
-      
+      const startDateStr = startDate.getFullYear() + '-' +
+        String(startDate.getMonth() + 1).padStart(2, '0') + '-' +
+        String(startDate.getDate()).padStart(2, '0');
+
+      const endDateStr = endDate.getFullYear() + '-' +
+        String(endDate.getMonth() + 1).padStart(2, '0') + '-' +
+        String(endDate.getDate()).padStart(2, '0');
+
       const { data: reportData, error: dbError } = await supabase
         .from('medical_reports')
         .insert([
@@ -521,20 +520,16 @@ const MedicalReports = () => {
       let successMessage = `✅ PDF generated with ${medicationHistory.length} records\n\n`;
       successMessage += `📅 Period: ${formatDateForDisplay(startDate)} to ${formatDateForDisplay(endDate)}\n`;
       successMessage += `💾 Saved locally on your device\n`;
-      
+
       if (uploadSuccess) {
         successMessage += `☁️ Also backed up to cloud storage`;
-        
+
         Alert.alert(
-          "Success!", 
+          "Success!",
           successMessage,
           [
-            { 
-              text: "Share", 
-              onPress: () => sharePDF(localUri) 
-            },
-            { 
-              text: "OK", 
+            {
+              text: "OK",
               style: "default",
               onPress: () => {
                 fetchGeneratedReports();
@@ -545,17 +540,13 @@ const MedicalReports = () => {
         );
       } else {
         successMessage += `⚠️ Cloud backup failed (local copy saved)`;
-        
+
         Alert.alert(
-          "Success!", 
+          "Success!",
           successMessage,
           [
-            { 
-              text: "Share Local Copy", 
-              onPress: () => sharePDF(localUri) 
-            },
-            { 
-              text: "OK", 
+            {
+              text: "OK",
               style: "default",
               onPress: () => {
                 fetchGeneratedReports();
@@ -576,7 +567,7 @@ const MedicalReports = () => {
 
   const formatDateForDisplay = (date: Date | string) => {
     const dateObj = date instanceof Date ? date : parseDateFromDB(date);
-    
+
     return dateObj.toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'short',
@@ -609,31 +600,12 @@ const MedicalReports = () => {
     return `${year}${month}${day}`;
   };
 
-  const sharePDF = async (pdfUri: string) => {
-    try {
-      console.log('Sharing file from:', pdfUri);
-      
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(pdfUri, {
-          mimeType: 'application/pdf',
-          dialogTitle: 'Share Medical Report',
-          UTI: 'com.adobe.pdf'
-        });
-      } else {
-        Alert.alert("Sharing not available", "Unable to share on this device");
-      }
-    } catch (error: any) {
-      console.error('Sharing error:', error);
-      Alert.alert("Sharing Error", `Failed to share PDF: ${error.message}`);
-    }
-  };
-
   const downloadPDF = async (report: any) => {
     setDownloading(report.id);
     try {
       // First download the file locally
       let localUri = '';
-      
+
       if (report.storage_path && bucketReady) {
         try {
           console.log('Downloading from Supabase:', report.storage_path);
@@ -645,16 +617,16 @@ const MedicalReports = () => {
 
           const fileName = report.file_name || `medical_report_${report.id}.pdf`;
           localUri = FileSystem.cacheDirectory + fileName;
-          
+
           const base64data = await blobToBase64(data);
           const base64Content = base64data.split(',')[1];
-          
+
           await FileSystem.writeAsStringAsync(
             localUri,
             base64Content,
             { encoding: FileSystem.EncodingType.Base64 }
           );
-          
+
         } catch (storageError) {
           console.log('Storage download failed:', storageError);
           // If storage download fails, try to use local file URL
@@ -687,8 +659,8 @@ const MedicalReports = () => {
         "Save Medical Report",
         "Choose how you'd like to save or share this report:",
         [
-          { 
-            text: "Cancel", 
+          {
+            text: "Cancel",
             style: "cancel",
             onPress: () => setDownloading(null)
           },
@@ -709,7 +681,7 @@ const MedicalReports = () => {
                 const fileName = report.file_name || `medical_report_${report.id}.pdf`;
                 const documentDir = FileSystem.documentDirectory;
                 const destinationUri = documentDir + fileName;
-                
+
                 await FileSystem.copyAsync({
                   from: localUri,
                   to: destinationUri
@@ -719,7 +691,7 @@ const MedicalReports = () => {
                   // On Android, we can save to downloads folder
                   const downloadsDir = FileSystem.cacheDirectory + '../Download/';
                   const downloadUri = downloadsDir + fileName;
-                  
+
                   try {
                     await FileSystem.copyAsync({
                       from: localUri,
@@ -732,35 +704,10 @@ const MedicalReports = () => {
                 } else {
                   Alert.alert("✅ Saved!", "Report saved to your device.");
                 }
-                
-                // Share the file so user can choose other apps
-                setTimeout(() => {
-                  sharePDF(destinationUri);
-                }, 500);
-                
+
               } catch (error: any) {
                 console.error('Save error:', error);
                 Alert.alert("Error", "Failed to save report to device.");
-              } finally {
-                setDownloading(null);
-              }
-            }
-          },
-          {
-            text: "Share with Apps",
-            onPress: async () => {
-              try {
-                if (await Sharing.isAvailableAsync()) {
-                  await Sharing.shareAsync(localUri, {
-                    mimeType: 'application/pdf',
-                    dialogTitle: 'Share Medical Report',
-                    UTI: 'com.adobe.pdf'
-                  });
-                } else {
-                  Alert.alert("Sharing not available", "Sharing is not available on this device.");
-                }
-              } catch (error: any) {
-                Alert.alert("Error", "Failed to share file.");
               } finally {
                 setDownloading(null);
               }
@@ -798,13 +745,13 @@ const MedicalReports = () => {
 
   const deleteReport = async (report: any) => {
     setDeleting(report.id);
-    
+
     Alert.alert(
       "Delete Report",
       `Are you sure you want to delete "${report.title}"?\n\nThis will delete from both:\n• Cloud storage\n• Database records\n\n⚠️ This action cannot be undone.`,
       [
-        { 
-          text: "Cancel", 
+        {
+          text: "Cancel",
           style: "cancel",
           onPress: () => setDeleting(null)
         },
@@ -852,16 +799,16 @@ const MedicalReports = () => {
   };
 
   const getWeekday = (date: Date) => {
-    return date.toLocaleDateString('en-US', { 
+    return date.toLocaleDateString('en-US', {
       weekday: 'short'
     });
   };
 
   return (
     <SafeAreaView style={styles.medicalReports}>
-      <ScrollView 
+      <ScrollView
         ref={scrollViewRef}
-        style={styles.scrollView} 
+        style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         refreshControl={
           <RefreshControl
@@ -873,24 +820,24 @@ const MedicalReports = () => {
         }
       >
         <View style={styles.container}>
-          
+
           {/* Header */}
           <View style={styles.headerCard}>
             <View style={styles.headerContent}>
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.backButton}
                 onPress={() => router.push('/(tabs)/profile')}
               >
-                <Image 
-                  style={styles.backIcon} 
-                  resizeMode="cover" 
-                  source={require('../../assets/backArrow.png')} 
+                <Image
+                  style={styles.backIcon}
+                  resizeMode="cover"
+                  source={require('../../assets/backArrow.png')}
                 />
               </TouchableOpacity>
-              <Image 
-                style={styles.headerIcon} 
-                resizeMode="cover" 
-                source={require('../../assets/PDFB.png')} 
+              <Image
+                style={styles.headerIcon}
+                resizeMode="cover"
+                source={require('../../assets/PDFB.png')}
               />
               <View style={styles.headerTextContainer}>
                 <Text style={styles.headerTitle}>Medical Reports</Text>
@@ -906,7 +853,7 @@ const MedicalReports = () => {
 
           {/* Tabs */}
           <View style={styles.tabContainer}>
-            <TouchableOpacity 
+            <TouchableOpacity
               style={[
                 styles.tabButton,
                 activeTab === 'History' && styles.activeTabButton
@@ -920,7 +867,7 @@ const MedicalReports = () => {
                 History
               </Text>
             </TouchableOpacity>
-            <TouchableOpacity 
+            <TouchableOpacity
               style={[
                 styles.tabButton,
                 activeTab === 'Reports' && styles.activeTabButton
@@ -939,14 +886,14 @@ const MedicalReports = () => {
           {/* Reports Tab Content */}
           {activeTab === 'Reports' && (
             <View style={styles.reportsContent}>
-              
+
               {/* Generate Report Card */}
               <View style={styles.generateCard}>
                 <View style={styles.generateHeader}>
-                  <Image 
-                    style={styles.generateIcon} 
-                    resizeMode="cover" 
-                    source={require('../../assets/PDFB.png')} 
+                  <Image
+                    style={styles.generateIcon}
+                    resizeMode="cover"
+                    source={require('../../assets/PDFB.png')}
                   />
                   <View style={styles.generateTextContainer}>
                     <Text style={styles.generateTitle}>Generate PDF Report</Text>
@@ -956,16 +903,16 @@ const MedicalReports = () => {
                     </Text>
                   </View>
                 </View>
-                
+
                 <View style={styles.dateSection}>
                   <Text style={styles.dateRangeHint}>
                     Select exact start and end dates for your report
                   </Text>
-                  
+
                   <View style={styles.dateInputsContainer}>
                     <View style={styles.dateInputWrapper}>
                       <Text style={styles.dateLabel}>Start Date</Text>
-                      <TouchableOpacity 
+                      <TouchableOpacity
                         style={styles.dateInput}
                         onPress={() => openDatePicker(true)}
                       >
@@ -975,10 +922,10 @@ const MedicalReports = () => {
                         </Text>
                       </TouchableOpacity>
                     </View>
-                    
+
                     <View style={styles.dateInputWrapper}>
                       <Text style={styles.dateLabel}>End Date</Text>
-                      <TouchableOpacity 
+                      <TouchableOpacity
                         style={styles.dateInput}
                         onPress={() => openDatePicker(false)}
                       >
@@ -990,7 +937,7 @@ const MedicalReports = () => {
                     </View>
                   </View>
 
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     style={[
                       styles.generateButton,
                       isGenerating && styles.generateButtonDisabled
@@ -1024,10 +971,10 @@ const MedicalReports = () => {
                 </View>
 
                 <View style={styles.searchContainer}>
-                  <Image 
-                    style={styles.searchIcon} 
-                    resizeMode="cover" 
-                    source={require('../../assets/searchPDFIcon.png')} 
+                  <Image
+                    style={styles.searchIcon}
+                    resizeMode="cover"
+                    source={require('../../assets/searchPDFIcon.png')}
                   />
                   <TextInput
                     style={styles.searchInput}
@@ -1060,10 +1007,10 @@ const MedicalReports = () => {
                     filteredReports.map((report) => (
                       <View key={report.id} style={styles.reportCard}>
                         <View style={styles.reportContent}>
-                          <Image 
-                            style={styles.reportIcon} 
-                            resizeMode="cover" 
-                            source={require('../../assets/PDFB.png')} 
+                          <Image
+                            style={styles.reportIcon}
+                            resizeMode="cover"
+                            source={require('../../assets/PDFB.png')}
                           />
                           <View style={styles.reportDetails}>
                             <Text style={styles.reportTitle} numberOfLines={1}>
@@ -1089,7 +1036,7 @@ const MedicalReports = () => {
                             )}
                           </View>
                           <View style={styles.reportActions}>
-                            <TouchableOpacity 
+                            <TouchableOpacity
                               style={styles.actionButton}
                               onPress={() => router.push({
                                 pathname: '/(tabs)/shareReport',
@@ -1099,7 +1046,7 @@ const MedicalReports = () => {
                               <Feather name="share-2" size={20} color="#0ea5e9" />
                             </TouchableOpacity>
 
-                            <TouchableOpacity 
+                            <TouchableOpacity
                               style={styles.actionButton}
                               onPress={() => downloadPDF(report)}
                               disabled={downloading === report.id}
@@ -1107,15 +1054,15 @@ const MedicalReports = () => {
                               {downloading === report.id ? (
                                 <ActivityIndicator size="small" color="#0ea5e9" />
                               ) : (
-                                <Image 
-                                  style={styles.actionIcon} 
-                                  resizeMode="cover" 
-                                  source={require('../../assets/downloadPDFB.png')} 
+                                <Image
+                                  style={styles.actionIcon}
+                                  resizeMode="cover"
+                                  source={require('../../assets/downloadPDFB.png')}
                                 />
                               )}
                             </TouchableOpacity>
-                            
-                            <TouchableOpacity 
+
+                            <TouchableOpacity
                               style={styles.deleteButton}
                               onPress={() => deleteReport(report)}
                               disabled={deleting === report.id}
@@ -1153,14 +1100,14 @@ const MedicalReports = () => {
                   <Text style={styles.modalTitle}>
                     Select {isPickingStartDate ? 'Start' : 'End'} Date
                   </Text>
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     onPress={() => setShowDateModal(false)}
                     style={styles.closeButton}
                   >
                     <Text style={styles.closeButtonText}>✕</Text>
                   </TouchableOpacity>
                 </View>
-                
+
                 <View style={styles.datePickerContainer}>
                   <DateTimePicker
                     value={isPickingStartDate ? startDate : endDate}
@@ -1173,15 +1120,15 @@ const MedicalReports = () => {
                     style={styles.datePicker}
                   />
                 </View>
-                
+
                 <View style={styles.modalFooter}>
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     style={styles.cancelButton}
                     onPress={() => setShowDateModal(false)}
                   >
                     <Text style={styles.cancelButtonText}>Cancel</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     style={styles.confirmButton}
                     onPress={() => handleDateChange({ type: 'set' }, isPickingStartDate ? startDate : endDate)}
                   >
@@ -1217,7 +1164,7 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     width: '100%',
   },
-  
+
   // Header Styles
   headerCard: {
     backgroundColor: "#fff",
@@ -1286,7 +1233,7 @@ const styles = StyleSheet.create({
     fontFamily: "Arimo-Regular",
     fontWeight: '500',
   },
-  
+
   // Tab Styles
   tabContainer: {
     flexDirection: "row",
@@ -1319,12 +1266,12 @@ const styles = StyleSheet.create({
     color: "#0ea5e9",
     fontWeight: "bold",
   },
-  
+
   // Reports Content
   reportsContent: {
     gap: 20,
   },
-  
+
   // Generate Card
   generateCard: {
     backgroundColor: "#fff",
@@ -1367,7 +1314,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
     fontStyle: "italic",
   },
-  
+
   // Date Section
   dateSection: {
     gap: 16,
@@ -1430,7 +1377,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     fontFamily: "Arimo-Regular",
   },
-  
+
   // Generated Section
   generatedSection: {
     gap: 16,
@@ -1471,7 +1418,7 @@ const styles = StyleSheet.create({
     color: "#0f172a",
     fontFamily: "Arimo-Regular",
   },
-  
+
   // Search
   searchContainer: {
     flexDirection: "row",
@@ -1501,7 +1448,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     marginLeft: 8,
   },
-  
+
   // Reports List
   reportsList: {
     gap: 12,
@@ -1610,7 +1557,7 @@ const styles = StyleSheet.create({
     fontFamily: "Arimo-Regular",
     lineHeight: 22,
   },
-  
+
   // Empty State
   emptyState: {
     alignItems: "center",
@@ -1635,12 +1582,12 @@ const styles = StyleSheet.create({
     fontFamily: "Arimo-Regular",
     textAlign: "center",
   },
-  
+
   // Loader
   loader: {
     marginVertical: 40,
   },
-  
+
   // Modal Styles
   modalOverlay: {
     flex: 1,
