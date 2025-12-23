@@ -204,6 +204,7 @@ const Profile: React.FC = () => {
             title="Help & Support"
             subtitle="Get assistance"
             icon={require("../../assets/profileHelp.png")}
+            onPress={() => router.push("/helpSupport")}
           />
         </View>
 
