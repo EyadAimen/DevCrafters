@@ -1,7 +1,6 @@
-import { View, Text, Button, Alert } from "react-native";
+import { Alert } from "react-native";
 import { supabase } from "../../lib/supabase";
 import { useRouter } from "expo-router";
-import { useState } from "react";
 
 // Main Payment Function
 export const handlePayment = async ({
@@ -10,7 +9,7 @@ export const handlePayment = async ({
   totalPriceNum,
   passedUnitPrice,
   medicineId,
-  pharmacyId, // required foreign key
+  pharmacyId,
   currentStockNum,
   initPaymentSheet,
   presentPaymentSheet,
@@ -26,67 +25,77 @@ export const handlePayment = async ({
 
     // 1️⃣ Get user session
     const { data: sessionData } = await supabase.auth.getSession();
-    const userId = sessionData?.session?.user.id;
+    const userId = sessionData?.session?.user?.id;
     if (!userId) throw new Error("Please login first");
-    console.log("✅ User ID:", userId);
 
-    // 1a️⃣ Verify pharmacy exists
+    // 2️⃣ Verify pharmacy + get address
     const { data: pharmacy, error: pharmacyError } = await supabase
       .from("pharmacy")
-      .select("pharmacy_id, name")
+      .select("pharmacy_id, pharmacy_name, pharmacy_address")
       .eq("pharmacy_id", pharmacyId)
       .single();
 
-    if (pharmacyError || !pharmacy) throw new Error("Invalid pharmacy_id provided");
-    console.log("✅ Pharmacy verified:", pharmacy.name);
+    if (pharmacyError || !pharmacy) {
+      throw new Error("Invalid pharmacy_id provided");
+    }
 
-    // 2️⃣ Create PaymentIntent via Supabase Edge Function
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/create-payment-intent`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", apikey: SUPABASE_ANON_KEY },
-      body: JSON.stringify({ amount: totalPriceNum * 100, currency: "myr" }),
-    });
+    // 3️⃣ Create Stripe PaymentIntent via Edge Function
+    const res = await fetch(
+      `${SUPABASE_URL}/functions/v1/create-payment-intent`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({
+          amount: totalPriceNum * 100,
+          currency: "myr",
+        }),
+      }
+    );
 
     const paymentIntentData = await res.json();
-    const { clientSecret, error: paymentIntentError } = paymentIntentData;
-    if (paymentIntentError) throw new Error(paymentIntentError);
+    if (paymentIntentData.error) throw new Error(paymentIntentData.error);
 
-    // 3️⃣ Initialize Payment Sheet
+    // 4️⃣ Init payment sheet
     const { error: initError } = await initPaymentSheet({
       merchantDisplayName: "Pillora Pharmacy",
-      paymentIntentClientSecret: clientSecret,
+      paymentIntentClientSecret: paymentIntentData.clientSecret,
       returnURL: "yourapp://stripe-redirect",
     });
     if (initError) throw new Error(initError.message);
 
-    // 4️⃣ Present Payment Sheet
+    // 5️⃣ Present payment sheet
     const { error: paymentError } = await presentPaymentSheet();
     if (paymentError) throw new Error(paymentError.message);
-    console.log("✅ Payment successful!");
 
-    // 5️⃣ Update stock
+    console.log("✅ Payment successful");
+
+    // 6️⃣ Update stock
     const newStock = currentStockNum + quantityNum;
     const { error: stockError } = await supabase
       .from("medicines")
       .update({ current_stock: newStock })
       .eq("medicine_id", medicineId);
+
     if (stockError) throw new Error(`Stock update failed: ${stockError.message}`);
-    console.log("✅ Stock updated");
 
-    // 6️⃣ Calculate unit price
-    const unitPrice = passedUnitPrice !== undefined ? passedUnitPrice : totalPriceNum / quantityNum;
+    // 7️⃣ Calculate unit price
+    const unitPrice =
+      passedUnitPrice !== undefined ? passedUnitPrice : totalPriceNum / quantityNum;
 
-    // 7️⃣ Create order with valid pharmacy_id
+    // 8️⃣ Create order
     const orderData = {
       user_id: userId,
       status: "completed",
       total_amount: totalPriceNum,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
       pharmacy_id: pharmacyId,
       payment_method: "stripe",
       quantity: quantityNum,
-      medicine_name: medicineName || "Unknown Medicine",
+      medicine_name: medicineName,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
     };
 
     const { data: order, error: orderError } = await supabase
@@ -94,91 +103,82 @@ export const handlePayment = async ({
       .insert([orderData])
       .select()
       .single();
-    if (orderError) throw new Error(`Order creation failed: ${orderError.message}`);
-    console.log("✅ Order created with ID:", order.order_id);
 
-    // 8️⃣ Create order item(s)
-    const orderItemsData = {
+    if (orderError) throw new Error(`Order creation failed: ${orderError.message}`);
+
+    // 9️⃣ Create order item
+    const orderItemData = {
       order_id: order.order_id,
-      medicine_name: medicineName || "Unknown Medicine",
+      medicine_name: medicineName,
       quantity: quantityNum,
       unit_price: unitPrice,
       created_at: new Date().toISOString(),
     };
 
-    const { data: insertedItems, error: itemsError } = await supabase
+    const { error: itemError } = await supabase
       .from("order_items")
-      .insert([orderItemsData])
-      .select();
-    if (itemsError) throw new Error(`Order items creation failed: ${itemsError.message}`);
-    console.log("✅ Order items created successfully:", insertedItems);
+      .insert([orderItemData]);
 
-    Alert.alert("Success", "Payment complete! Order saved.");
-    router.push("/(tabs)/meds");
+    if (itemError) throw new Error(`Order item creation failed: ${itemError.message}`);
 
+    // 🔟 Build receipt data
+    const receiptData = {
+      receiptNumber: `RCPT-${order.order_id}`,
+      date: new Date().toLocaleString(),
+      pharmacy: {
+        name: pharmacy.pharmacy_name,
+        address: pharmacy.pharmacy_address,
+      },
+      items: [
+        {
+          medicineName,
+          quantity: quantityNum,
+          unitPrice,
+          total: unitPrice * quantityNum,
+        },
+      ],
+      payment: {
+        method: "Stripe",
+        status: "Paid",
+      },
+      summary: {
+        total: totalPriceNum,
+      },
+    };
+
+    // 1️⃣1️⃣ Save receipt to database
+    const receiptInsertData = {
+      order_id: order.order_id,
+      user_id: userId,
+      pharmacy_id: pharmacyId,
+      receipt_number: receiptData.receiptNumber,
+      total_amount: totalPriceNum,
+      payment_method: "stripe",
+      receipt_data: receiptData,
+    };
+
+    const { error: receiptError } = await supabase
+      .from("receipts")
+      .insert([receiptInsertData]);
+
+    if (receiptError) throw new Error(`Receipt save failed: ${receiptError.message}`);
+
+    console.log("✅ Receipt saved");
+
+    Alert.alert("Success", "Payment complete!");
+
+    // 1️⃣2️⃣ Redirect to receipt page
+    router.push({
+      pathname: "/receipt",
+      params: {
+        receipt: JSON.stringify(receiptData),
+      },
+    });
   } catch (error: any) {
     console.error("💥 Payment error:", error);
     Alert.alert("Payment Failed", error.message || "Something went wrong");
   } finally {
     setIsProcessing(false);
-  }
-};
-
-// TEST FUNCTION
-export const testDirectInsertion = async (pharmacyId: string) => {
-  try {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-
-    if (!pharmacyId) throw new Error("pharmacy_id is required for test insertion");
-
-    // Verify pharmacy exists
-    const { data: pharmacy, error: pharmacyError } = await supabase
-      .from("pharmacy")
-      .select("pharmacy_id, name")
-      .eq("pharmacy_id", pharmacyId)
-      .single();
-    if (pharmacyError || !pharmacy) throw new Error("Invalid pharmacy_id for test");
-
-    // Test order creation
-    const orderData = {
-      user_id: user.id,
-      status: "completed",
-      total_amount: 99.99,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      pharmacy_id: pharmacyId,
-      payment_method: "test",
-      quantity: 5,
-      medicine_name: "Test Medicine",
-    };
-
-    const { data: testOrder, error: orderError } = await supabase
-      .from("orders")
-      .insert([orderData])
-      .select()
-      .single();
-    if (orderError) throw new Error(orderError.message);
-
-    // Test order_items insertion
-    const testItemData = {
-      order_id: testOrder.order_id,
-      medicine_name: "Test Medicine",
-      quantity: 5,
-      unit_price: 19.998,
-      created_at: new Date().toISOString(),
-    };
-
-    const { data: inserted, error: insertError } = await supabase
-      .from("order_items")
-      .insert([testItemData])
-      .select();
-
-    if (insertError) console.error("❌ Test insertion failed:", insertError);
-    else console.log("✅ Test insertion successful:", inserted);
-
-  } catch (error) {
-    console.error("Test error:", error);
   }
 };
 
