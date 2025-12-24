@@ -200,7 +200,18 @@ export default function MedicineDetailsInfo() {
                 </View>
 
                 <View style={styles.headerButtonRow}>
-                    <TouchableOpacity style={styles.reminderBtn}>
+                    <TouchableOpacity
+                        style={styles.reminderBtn}
+                        onPress={() =>
+                            router.push({
+                                pathname: "/(tabs)/reminders",
+                                params: {
+                                    medicineId: data.medicine_id,
+                                    medicineName: data.medicine_name,
+                                },
+                            })
+                        }
+                    >
                         <Text style={styles.reminderText}>Set Reminder</Text>
                     </TouchableOpacity>
                     <TouchableOpacity 
