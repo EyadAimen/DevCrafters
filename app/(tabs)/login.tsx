@@ -14,10 +14,19 @@ import {
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { supabase } from "../../lib/supabase";
+import { Biometrics } from "../../lib/biometrics";
+import { MFA } from "../../lib/mfa";
+import { Modal, ActivityIndicator } from "react-native";
+import { Feather } from '@expo/vector-icons';
 
 export default function Login() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [mfaModalVisible, setMfaModalVisible] = useState(false);
+  const [mfaFactorId, setMfaFactorId] = useState("");
+  const [verifyCode, setVerifyCode] = useState("");
+  const [isVerifying, setIsVerifying] = useState(false);
+
   const [formData, setFormData] = useState({
     email: "",
     password: ""
@@ -91,13 +100,55 @@ export default function Login() {
       if (error) {
         showToast("Invalid email or password", "error");
       } else {
-        showToast("Welcome back!", "success");
-        setTimeout(() => router.push("/home"), 1500);
+        // MFA CHECK
+        const verifiedFactors = await MFA.getVerifiedFactors();
+        if (verifiedFactors.length > 0) {
+          setMfaFactorId(verifiedFactors[0].id); // Just use the first one for MVP
+          setMfaModalVisible(true);
+          return;
+        }
+
+        handleLoginSuccess(data.session);
       }
     } catch (error) {
       showToast("Something went wrong", "error");
     } finally {
-      setLoading(false);
+      if (!mfaModalVisible) setLoading(false);
+    }
+  };
+
+  const handleLoginSuccess = async (session: any) => {
+    showToast("Welcome back!", "success");
+
+    // Check for biometrics support
+    const supported = await Biometrics.isSupported();
+    if (supported && session) {
+      // Check preference
+      const enabledPref = await Biometrics.isEnabled();
+      if (enabledPref) {
+        // Already enrolled and enabled, just update the token silently
+        await Biometrics.saveSession(session.refresh_token);
+        router.push("/home");
+      } else {
+        Alert.alert(
+          "Enable Biometric Login?",
+          "Would you like to use your fingerprint for faster login next time?",
+          [
+            { text: "No", style: "cancel", onPress: () => router.push("/home") },
+            {
+              text: "Yes",
+              onPress: async () => {
+                await Biometrics.setEnabled(true);
+                const success = await Biometrics.saveSession(session.refresh_token);
+                if (success) showToast("Biometrics enabled!", "success");
+                router.push("/home");
+              }
+            }
+          ]
+        );
+      }
+    } else {
+      setTimeout(() => router.push("/home"), 1500);
     }
   };
 
@@ -134,7 +185,7 @@ export default function Login() {
                 placeholderTextColor="#94a3b8"
                 style={styles.input}
                 value={formData.email}
-                onChangeText={(text) => setFormData(prev => ({...prev, email: text}))}
+                onChangeText={(text) => setFormData(prev => ({ ...prev, email: text }))}
                 autoCapitalize="none"
               />
             </View>
@@ -153,13 +204,13 @@ export default function Login() {
                 secureTextEntry
                 style={styles.input}
                 value={formData.password}
-                onChangeText={(text) => setFormData(prev => ({...prev, password: text}))}
+                onChangeText={(text) => setFormData(prev => ({ ...prev, password: text }))}
               />
             </View>
           </View>
 
           {/* Forgot Password */}
-          <TouchableOpacity style={styles.forgotPassword} onPress={() => router.push("/forgot-password") }>
+          <TouchableOpacity style={styles.forgotPassword} onPress={() => router.push("/forgot-password")}>
             <Text style={styles.forgotPasswordText} >Forgot password?</Text>
           </TouchableOpacity>
 
@@ -200,12 +251,82 @@ export default function Login() {
       </LinearGradient>
       {toast.visible && (
         <View style={{
-          position: "absolute",top: 60,left: 20,right: 20,padding: 16,borderRadius: 12, alignItems: "center", backgroundColor: toast.type === "success" ? "#0ea5e9" : "#ef4444", shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 8, elevation: 5,
+          position: "absolute", top: 60, left: 20, right: 20, padding: 16, borderRadius: 12, alignItems: "center", backgroundColor: toast.type === "success" ? "#0ea5e9" : "#ef4444", shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 8, elevation: 5,
         }}>
-          <Text style={{color: "#fff", fontWeight: "500", fontSize: 14,
+          <Text style={{
+            color: "#fff", fontWeight: "500", fontSize: 14,
           }}>{toast.message}</Text>
-       </View>
+        </View>
       )}
+
+      {/* MFA Verification Modal */}
+      <Modal
+        visible={mfaModalVisible}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => { }} // Disallow closing without verification? Or allow to fallback to login
+      >
+        <View style={styles.modalBg}>
+          <View style={styles.modalContent}>
+            <View style={styles.iconCircle}>
+              <Feather name="shield" size={32} color="#0284c7" />
+            </View>
+            <Text style={styles.modalTitle}>Two-Factor Authentication</Text>
+            <Text style={styles.modalSubtitle}>Enter the 6-digit code from your authenticator app</Text>
+
+            <TextInput
+              style={styles.codeInput}
+              value={verifyCode}
+              onChangeText={setVerifyCode}
+              placeholder="000000"
+              keyboardType="number-pad"
+              maxLength={6}
+              placeholderTextColor="#94a3b8"
+              autoFocus
+            />
+
+            <Pressable
+              style={[styles.verifyButton, (isVerifying || verifyCode.length !== 6) && styles.disabledButton]}
+              onPress={async () => {
+                if (verifyCode.length !== 6) return;
+                setIsVerifying(true);
+                try {
+                  const result = await MFA.verifyCode(mfaFactorId, verifyCode);
+                  // MFA.verifyCode throws on error, so if we get here, we are good.
+                  // result is the session data object { session, user }
+
+                  setMfaModalVisible(false);
+                  handleLoginSuccess(result.session);
+                } catch (e: any) {
+                  console.log("MFA Error:", e);
+                  showToast(e.message || "Invalid code", "error");
+                } finally {
+                  setIsVerifying(false);
+                  setVerifyCode(""); // Clear on failure or success
+                }
+              }}
+              disabled={isVerifying || verifyCode.length !== 6}
+            >
+              {isVerifying ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.verifyButtonText}>Verify</Text>
+              )}
+            </Pressable>
+
+            <Pressable
+              style={styles.cancelLink}
+              onPress={() => {
+                setMfaModalVisible(false);
+                setLoading(false);
+                supabase.auth.signOut(); // Cancel login
+              }}
+            >
+              <Text style={styles.cancelLinkText}>Cancel & Sign Out</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -286,5 +407,78 @@ const styles = StyleSheet.create({
     fontSize: 11,
     marginTop: 16,
     width: "85%",
+  },
+  modalBg: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    padding: 24,
+  },
+  modalContent: {
+    backgroundColor: "#fff",
+    borderRadius: 24,
+    padding: 32,
+    alignItems: "center",
+    elevation: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+  },
+  iconCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: "#e0f2fe",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 20,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: "600",
+    color: "#0f172a",
+    marginBottom: 8,
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    color: "#64748b",
+    textAlign: "center",
+    marginBottom: 24,
+  },
+  codeInput: {
+    backgroundColor: "#f1f5f9",
+    width: "100%",
+    borderRadius: 12,
+    padding: 16,
+    fontSize: 24,
+    textAlign: "center",
+    letterSpacing: 8,
+    color: "#0f172a",
+    marginBottom: 24,
+    fontWeight: "600",
+  },
+  verifyButton: {
+    backgroundColor: "#0ea5e9",
+    width: "100%",
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  disabledButton: {
+    backgroundColor: "#94a3b8",
+  },
+  verifyButtonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  cancelLink: {
+    padding: 8,
+  },
+  cancelLinkText: {
+    color: "#64748b",
+    fontSize: 14,
   },
 });

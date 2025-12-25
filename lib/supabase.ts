@@ -13,12 +13,12 @@ const options =
   Platform.OS === 'web'
     ? {} // web automatically uses localStorage
     : {
-        auth: {
-          storage: AsyncStorage,
-          autoRefreshToken: true,
-          persistSession: true,
-          detectSessionInUrl: false,
-        },
-      }
+      auth: {
+        storage: AsyncStorage,
+        autoRefreshToken: true,
+        persistSession: false,
+        detectSessionInUrl: false,
+      },
+    }
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, options)
