@@ -19,55 +19,59 @@ import {
 
 const backArrow = require("../../assets/backArrow.png");
 
-// Helper function to check if medicine stock is sufficient
-const checkMedicineStock = async (
-  pharmacyId: string,
-  medicineId: string,
-  requestedQuantity: number
-) => {
-  try {
-    // Get reference_id from medicine
-    const { data: medicineData, error: medicineError } = await supabase
-      .from("medicines")
-      .select("reference_id")
-      .eq("medicine_id", medicineId)
-      .maybeSingle();
+/* =========================
+   SAVE RECEIPT HELPER
+========================= */
+const saveReceipt = async ({
+  orderId,
+  userId,
+  pharmacyId,
+  pharmacyName,
+  pharmacyAddress,
+  medicineName,
+  quantity,
+  unitPrice,
+  totalAmount,
+}: any) => {
+  const receiptData = {
+    receiptNumber: `RCPT-${orderId}`,
+    date: new Date().toISOString(),
+    pharmacy: {
+      name: pharmacyName,
+      address: pharmacyAddress,
+    },
+    items: [
+      {
+        medicineName,
+        quantity,
+        unitPrice,
+        total: quantity * unitPrice,
+      },
+    ],
+    payment: {
+      method: "Stripe",
+      status: "Paid",
+    },
+    summary: {
+      total: totalAmount,
+    },
+  };
 
-    if (medicineError || !medicineData?.reference_id) {
-      return {
-        isAvailable: false,
-        availableStock: 0,
-        error: medicineError?.message || "Medicine not found",
-      };
-    }
+  const { error } = await supabase.from("receipts").insert([
+    {
+      order_id: orderId,
+      user_id: userId,
+      pharmacy_id: pharmacyId,
+      receipt_number: receiptData.receiptNumber,
+      total_amount: totalAmount,
+      payment_method: "stripe",
+      receipt_data: receiptData,
+    },
+  ]);
 
-    const referenceId = medicineData.reference_id;
+  if (error) throw error;
 
-    // Check stock in pharmacy_medicine
-    const { data: stockData, error } = await supabase
-      .from("pharmacy_medicine")
-      .select("stock")
-      .eq("pharmacy_id", pharmacyId)
-      .eq("reference_id", referenceId)
-      .maybeSingle();
-
-    if (error) {
-      return {
-        isAvailable: false,
-        availableStock: 0,
-        error: error.message,
-      };
-    }
-
-    const availableStock = stockData?.stock || 0;
-    return {
-      isAvailable: availableStock >= requestedQuantity,
-      availableStock,
-      error: null,
-    };
-  } catch (error: any) {
-    return { isAvailable: false, availableStock: 0, error: error.message };
-  }
+  return receiptData;
 };
 
 const OnlineRefillOrder3 = () => {
@@ -86,95 +90,94 @@ const OnlineRefillOrder3 = () => {
   const totalPrice = getParam("totalPrice");
   const unitPrice = parseFloat(getParam("unitPrice")) || 0;
   const pharmacyId = getParam("pharmacyId");
-  const referenceId = getParam("referenceId"); // Get the referenceId
+  const referenceId = getParam("referenceId");
   const pharmacyName = getParam("pharmacyName");
 
   const quantityNum = parseInt(quantity) || 0;
   const totalPriceNum = parseFloat(totalPrice) || 0;
 
-  // Save order & order items
+  /* =========================
+     SAVE ORDER & ITEMS
+  ========================= */
   const saveOrderAndItems = async (userId: string) => {
     const now = new Date().toISOString();
 
-    const orderData = {
-      user_id: userId,
-      pharmacy_name: pharmacyName || "Unknown Pharmacy",
-      pharmacy_id: pharmacyId,
-      status: "pending",
-      total_amount: totalPriceNum,
-      quantity: quantityNum,
-      medicine_name: medicineName || "Unknown Medicine",
-      payment_method: "stripe",
-      created_at: now,
-      updated_at: now,
-    };
-
-    const { data: order, error: orderError } = await supabase
+    const { data: order, error } = await supabase
       .from("orders")
-      .insert([orderData])
+      .insert([
+        {
+          user_id: userId,
+          pharmacy_name: pharmacyName,
+          pharmacy_id: pharmacyId,
+          status: "completed",
+          total_amount: totalPriceNum,
+          quantity: quantityNum,
+          medicine_name: medicineName,
+          payment_method: "stripe",
+          created_at: now,
+          updated_at: now,
+        },
+      ])
       .select()
       .single();
 
-    if (orderError) throw orderError;
+    if (error) throw error;
 
-    // Create order items
-    const orderItemsData = {
-      order_id: order.order_id,
-      medicine_name: medicineName,
-      quantity: quantityNum,
-      unit_price: unitPrice || totalPriceNum / quantityNum,
-      created_at: now,
-    };
-
-    const { error: itemsError } = await supabase
-      .from("order_items")
-      .insert([orderItemsData]);
-
-    if (itemsError) throw itemsError;
+    await supabase.from("order_items").insert([
+      {
+        order_id: order.order_id,
+        medicine_name: medicineName,
+        quantity: quantityNum,
+        unit_price: unitPrice || totalPriceNum / quantityNum,
+        created_at: now,
+      },
+    ]);
 
     return order.order_id;
   };
 
-  // Update medicine stock
-  const updateMedicineStock = async (medicineId: string, qty: number) => {
-    const { data, error } = await supabase
-      .from("medicines")
-      .select("current_stock")
-      .eq("medicine_id", medicineId)
-      .single();
-    if (error) throw error;
-
-    const newStock = (data?.current_stock || 0) + qty;
-    const { error: updateError } = await supabase
-      .from("medicines")
-      .update({ current_stock: newStock })
-      .eq("medicine_id", medicineId);
-
-    if (updateError) throw updateError;
-  };
-
-  // Deduct stock from pharmacy inventory
-  const deductPharmacyStock = async () => {
-    if (!pharmacyId || !referenceId) return;
-
-    // Get the pharmacy_medicine record to update its stock
-    const { data: pm, error: pmError } = await supabase
-      .from("pharmacy_medicine")
-      .select("id, stock")
-      .eq("pharmacy_id", pharmacyId)
-      .eq("reference_id", referenceId)
-      .single();
-
-    if (pmError || !pm) {
-      console.error("Could not find pharmacy medicine to deduct stock:", pmError);
-      // Continue without throwing error, as order is already placed. Log this for review.
-      return;
+  /* =========================
+     UPDATE STOCK
+  ========================= */
+  const updateStocks = async () => {
+    // 1️⃣ Update medicine current stock
+    if (medicineId) {
+      const { data, error } = await supabase
+        .from("medicines")
+        .select("current_stock")
+        .eq("medicine_id", medicineId)
+        .single();
+      if (!error && data) {
+        const newStock = data.current_stock + quantityNum;
+        await supabase
+          .from("medicines")
+          .update({ current_stock: newStock })
+          .eq("medicine_id", medicineId);
+      }
     }
 
-    const newStock = Math.max(0, pm.stock - quantityNum);
-    await supabase.from("pharmacy_medicine").update({ stock: newStock }).eq("id", pm.id);
+    // 2️⃣ Deduct stock from pharmacy
+    if (pharmacyId && referenceId) {
+      const { data, error } = await supabase
+        .from("pharmacy_medicine")
+        .select("id, stock")
+        .eq("pharmacy_id", pharmacyId)
+        .eq("reference_id", referenceId)
+        .single();
+
+      if (!error && data) {
+        const newStock = Math.max(0, data.stock - quantityNum);
+        await supabase
+          .from("pharmacy_medicine")
+          .update({ stock: newStock })
+          .eq("id", data.id);
+      }
+    }
   };
 
+  /* =========================
+     HANDLE PAYMENT
+  ========================= */
   const handlePayment = async () => {
     if (quantityNum <= 0 || totalPriceNum <= 0) {
       Alert.alert("Error", "Invalid order details.");
@@ -188,57 +191,60 @@ const OnlineRefillOrder3 = () => {
       const userId = sessionData?.session?.user?.id;
       if (!userId) throw new Error("User not logged in");
 
-      // Create PaymentIntent via Edge Function
+      // Create payment intent
       const { data, error } = await supabase.functions.invoke(
         "create-payment-intent",
         {
-          body: JSON.stringify({
-            amount: Math.round(totalPriceNum * 100),
-          }),
-          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ amount: Math.round(totalPriceNum * 100) }),
         }
       );
-
       if (error) throw error;
-      const clientSecret = data.clientSecret;
 
-      // Initialize sheet
+      // Initialize Stripe payment sheet
       const { error: initError } = await initPaymentSheet({
-        merchantDisplayName: pharmacyName || "Pharmacy",
-        paymentIntentClientSecret: clientSecret,
-        paymentMethodTypes: ["card", "grabpay"],
+        merchantDisplayName: pharmacyName,
+        paymentIntentClientSecret: data.clientSecret,
       });
-
       if (initError) throw initError;
 
-      // Present sheet
+      // Present payment sheet
       const paymentResult = await presentPaymentSheet();
-      if (paymentResult.error) {
-        if (paymentResult.error.code === "Canceled") {
-          setIsProcessing(false);
-          return;
-        }
-        throw new Error(paymentResult.error.message);
-      }
+      if (paymentResult.error) throw paymentResult.error;
 
       // Save order
       const orderId = await saveOrderAndItems(userId);
 
-      // Update stock
-      if (medicineId) {
-        await updateMedicineStock(medicineId, quantityNum);
-      }
+      // Update stocks
+      await updateStocks();
 
-      // Deduct stock from pharmacy
-      await deductPharmacyStock();
+      // Get pharmacy info
+      const { data: pharmacy, error: pharmacyError } = await supabase
+        .from("pharmacy")
+        .select("pharmacy_name, pharmacy_address")
+        .eq("pharmacy_id", pharmacyId)
+        .single();
+      if (pharmacyError || !pharmacy) throw pharmacyError;
 
-      Alert.alert(
-        "Payment Successful",
-        `${medicineName} refilled successfully.`,
-        [{ text: "View My Medicines", onPress: () => router.push("/(tabs)/meds") }]
-      );
+      // Save receipt
+      const receiptData = await saveReceipt({
+        orderId,
+        userId,
+        pharmacyId,
+        pharmacyName: pharmacy.pharmacy_name,
+        pharmacyAddress: pharmacy.pharmacy_address,
+        medicineName,
+        quantity: quantityNum,
+        unitPrice: unitPrice || totalPriceNum / quantityNum,
+        totalAmount: totalPriceNum,
+      });
+
+      // Redirect to receipt page
+      router.push({
+        pathname: "/receipt",
+        params: { receipt: JSON.stringify(receiptData) },
+      });
     } catch (err: any) {
-      Alert.alert("Payment Error", err.message);
+      Alert.alert("Payment Error", err.message || "Something went wrong");
     } finally {
       setIsProcessing(false);
     }
@@ -246,76 +252,49 @@ const OnlineRefillOrder3 = () => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-      >
+      <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.headerSection}>
-          <Pressable onPress={() => router.push("/(tabs)/meds")} style={styles.backButton}>
+          <Pressable onPress={() => router.back()} style={styles.backButton}>
             <Image source={backArrow} style={styles.backIcon} />
           </Pressable>
-
           <View>
-            <Text style={styles.requestRefill}>Request Refill</Text>
+            <Text style={styles.title}>Refill Medicine</Text>
             <Text style={styles.medicineName}>{medicineName}</Text>
             <Text style={styles.pharmacyText}>From: {pharmacyName}</Text>
           </View>
         </View>
 
         {/* Order Summary */}
-        <View style={styles.orderSummary}>
+        <View style={styles.summaryCard}>
           <Text style={styles.summaryTitle}>Order Summary</Text>
-
           <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>Medicine:</Text>
-            <Text style={styles.summaryValue}>{medicineName}</Text>
+            <Text style={styles.label}>Quantity</Text>
+            <Text style={styles.value}>{quantityNum} units</Text>
           </View>
-
           <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>Quantity:</Text>
-            <Text style={styles.summaryValue}>{quantity} units</Text>
+            <Text style={styles.label}>Unit Price</Text>
+            <Text style={styles.value}>RM {unitPrice.toFixed(2)}</Text>
           </View>
-
-          <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>Unit Price:</Text>
-            <Text style={styles.summaryValue}>RM {unitPrice.toFixed(2)}</Text>
-          </View>
-
           <View style={styles.summaryDivider} />
-
           <View style={[styles.summaryRow, styles.totalRow]}>
-            <Text style={styles.totalLabel}>Total:</Text>
+            <Text style={styles.totalLabel}>Total</Text>
             <Text style={styles.totalValue}>RM {totalPriceNum.toFixed(2)}</Text>
           </View>
         </View>
 
-        {/* Pay Button */}
+        {/* Payment Button */}
         <Pressable
-          style={[
-            styles.paymentButton,
-            !(quantityNum > 0 && !isProcessing) && styles.paymentButtonDisabled,
-          ]}
+          style={[styles.paymentButton, isProcessing && styles.disabledButton]}
           onPress={handlePayment}
           disabled={isProcessing}
         >
           {isProcessing ? (
-            <View style={styles.processingRow}>
-              <ActivityIndicator color="#fff" />
-              <Text style={styles.paymentButtonText}>Processing…</Text>
-            </View>
+            <ActivityIndicator color="#fff" />
           ) : (
             <Text style={styles.paymentButtonText}>
               Pay RM {totalPriceNum.toFixed(2)}
             </Text>
           )}
-        </Pressable>
-
-        <Pressable
-          style={styles.cancelButton}
-          onPress={() => router.push("/(tabs)/meds")}
-          disabled={isProcessing}
-        >
-          <Text style={styles.cancelButtonText}>Cancel Order</Text>
         </Pressable>
       </ScrollView>
     </SafeAreaView>
@@ -324,62 +303,40 @@ const OnlineRefillOrder3 = () => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#f8fafc" },
-  scrollView: { flex: 1 },
   scrollContent: { padding: 20, paddingBottom: 40 },
-  headerSection: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 30,
-  },
-  backButton: { padding: 8, marginRight: 12 },
+  headerSection: { flexDirection: "row", alignItems: "center", marginBottom: 20 },
+  backButton: { marginRight: 12, padding: 8 },
   backIcon: { width: 24, height: 24 },
-  requestRefill: { fontSize: 18, color: "#64748b", marginBottom: 4 },
+  title: { fontSize: 18, color: "#64748b" },
   medicineName: { fontSize: 24, fontWeight: "bold", color: "#0f172a" },
-  pharmacyText: { fontSize: 14, color: "#64748b", marginTop: 4 },
-
-  orderSummary: {
+  pharmacyText: { fontSize: 14, color: "#64748b", marginTop: 2 },
+  summaryCard: {
     backgroundColor: "#fff",
     borderRadius: 16,
     padding: 20,
-    marginBottom: 30,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
+    marginBottom: 20,
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 5,
   },
-  summaryTitle: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: "#0f172a",
-    marginBottom: 16,
-  },
-  summaryRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 12,
-  },
-  summaryLabel: { fontSize: 14, color: "#64748b" },
-  summaryValue: { fontSize: 14, color: "#0f172a", fontWeight: "500" },
-  summaryDivider: {
-    height: 1,
-    backgroundColor: "#e2e8f0",
-    marginVertical: 16,
-  },
+  summaryTitle: { fontSize: 18, fontWeight: "bold", marginBottom: 16 },
+  summaryRow: { flexDirection: "row", justifyContent: "space-between", marginBottom: 12 },
+  label: { fontSize: 14, color: "#64748b" },
+  value: { fontSize: 14, fontWeight: "500", color: "#0f172a" },
+  summaryDivider: { height: 1, backgroundColor: "#e2e8f0", marginVertical: 12 },
   totalRow: { alignItems: "center" },
   totalLabel: { fontSize: 16, fontWeight: "600", color: "#0f172a" },
-  totalValue: { fontSize: 24, fontWeight: "bold", color: "#0ea5e9" },
-
+  totalValue: { fontSize: 22, fontWeight: "bold", color: "#0ea5e9" },
   paymentButton: {
     backgroundColor: "#0ea5e9",
     padding: 18,
     borderRadius: 14,
     alignItems: "center",
-    marginBottom: 16,
+    marginTop: 10,
   },
-  paymentButtonDisabled: { opacity: 0.5 },
+  disabledButton: { opacity: 0.6 },
   paymentButtonText: { color: "#fff", fontSize: 16, fontWeight: "bold" },
-  processingRow: { flexDirection: "row", gap: 10, alignItems: "center" },
-
-  cancelButton: { alignItems: "center", padding: 12 },
-  cancelButtonText: { color: "#64748b", fontSize: 16 },
 });
 
 export default OnlineRefillOrder3;
