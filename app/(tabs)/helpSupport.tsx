@@ -1,15 +1,59 @@
 import * as React from "react";
-import {ScrollView, StyleSheet, Pressable, Text, View, Image, Dimensions} from "react-native";
+import { 
+  ScrollView, 
+  StyleSheet, 
+  Pressable, 
+  Text, 
+  View, 
+  Image, 
+  Dimensions,
+  TextInput,
+  Alert 
+} from "react-native";
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from "react-native-safe-area-context";
 import BottomNavigation from "../../components/BottomNavigation";
 import { Ionicons } from '@expo/vector-icons';
+import { supabase } from "../../lib/supabase";
 
 const { width: screenWidth } = Dimensions.get('window');
 
 const HelpSupport = () => {
   const [expandedFaqs, setExpandedFaqs] = React.useState<number[]>([]);
+  const [subject, setSubject] = React.useState("");
+  const [description, setDescription] = React.useState("");
+  const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const [userEmail, setUserEmail] = React.useState<string | null>(null);
   
+  // Get current user info on component mount
+  React.useEffect(() => {
+    getUserInfo();
+  }, []);
+
+  const getUserInfo = async () => {
+  try {
+    const { data: { user }, error } = await supabase.auth.getUser();
+    
+    if (error) {
+      console.error("Error getting user:", error);
+      setUserEmail(null);
+      return;
+    }
+    
+    if (user?.email) {
+      setUserEmail(user.email);
+      console.log("User email:", user.email);
+    } else {
+      setUserEmail(null);
+      // You might want to handle this case - maybe show a login prompt
+      console.warn("User is logged in but email is not available");
+    }
+  } catch (error) {
+    console.error("Unexpected error getting user info:", error);
+    setUserEmail(null);
+  }
+};
+
   const toggleFaq = (index: number) => {
     setExpandedFaqs(prev => 
       prev.includes(index) 
@@ -18,14 +62,93 @@ const HelpSupport = () => {
     );
   };
 
+  const handleSubmitTicket = async () => {
+    // Validate inputs
+    if (!subject.trim()) {
+      Alert.alert("Missing Subject", "Please enter a subject for your support ticket.");
+      return;
+    }
+
+    if (!description.trim()) {
+      Alert.alert("Missing Description", "Please describe your issue or question.");
+      return;
+    }
+
+    if (description.trim().length < 10) {
+      Alert.alert("Description Too Short", "Please provide more details about your issue (at least 10 characters).");
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      // Get current user
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      
+      if (userError || !user) {
+        Alert.alert("Authentication Error", "Please sign in to submit a support ticket.");
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Insert ticket into Supabase
+      const { data, error } = await supabase
+        .from('support_ticket')
+        .insert([
+          {
+            user_id: user.id,
+            subject: subject.trim(),
+            description: description.trim(),
+            reviewed: false
+            // created_at will be automatically set by Supabase
+          }
+        ])
+        .select(); // Return the inserted data
+
+      if (error) {
+        console.error("Error submitting ticket:", error);
+        Alert.alert(
+          "Submission Failed", 
+          "There was an error submitting your ticket. Please try again."
+        );
+      } else {
+        // Success - clear form and show confirmation
+        setSubject("");
+        setDescription("");
+        
+        Alert.alert(
+          "Ticket Submitted Successfully!",
+          `Your support ticket has been submitted. We'll review it and get back to you at ${user.email}. Ticket ID: ${data[0]?.support_id || 'N/A'}`,
+          [
+            { 
+              text: "OK", 
+              onPress: () => console.log("Ticket submitted successfully") 
+            }
+          ]
+        );
+        
+        // Optional: Log the submission for debugging
+        console.log("Ticket submitted:", data[0]);
+      }
+    } catch (error) {
+      console.error("Unexpected error:", error);
+      Alert.alert(
+        "Unexpected Error", 
+        "An unexpected error occurred. Please try again later."
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const faqItems = [
     {
       question: "How do I scan my medication?",
-      answer: "Use the camera feature in the app to scan your medication barcode. Make sure you have good lighting and hold your phone steady."
+      answer: "Use the camera feature in the app to scan your medication label. Make sure you have good lighting and hold your phone steady."
     },
     {
       question: "How do I set up medication reminders?",
-      answer: "Go to Medications tab > Add Medication > Set schedule. You can set multiple reminders per day and customize notification sounds."
+      answer: "Go to Home tab > Reminders > + Add New. You can set multiple reminders per day."
     },
     {
       question: "Can I order refills through the app?",
@@ -41,16 +164,13 @@ const HelpSupport = () => {
     },
     {
       question: "What if I miss a dose?",
-      answer: "The app will show missed doses in your history. You can log them manually and the app will adjust your adherence statistics."
-    },
-    {
-      question: "Can I track multiple people's medications?",
-      answer: "Yes, you can create separate profiles for family members under your main account in the Family section."
+      answer: "The app will show missed doses in your Analytics. You can log them manually and the app will adjust your adherence statistics."
     },
     {
       question: "How do I find nearby pharmacies?",
-      answer: "Use the Pharmacy Locator in the app, which shows pharmacies near you with hours, contact info, and directions."
+      answer: "Use the \"Find Pharmacies\" in the app, which shows pharmacies near you with hours, contact info, and directions."
     }
+    // add more FAQs as needed
   ];
 
   const supportMethods = [
@@ -58,19 +178,51 @@ const HelpSupport = () => {
       title: "Live Chat",
       description: "Chat with our support team",
       availability: "Available 9 AM - 6 PM MYT",
-      icon: "chatbubbles" as const
+      icon: "chatbubbles" as const,
+      onPress: () => Alert.alert("Live Chat", "This feature will open a chat window. Coming soon!")
     },
     {
       title: "Email Support",
       description: "support@pillora.my",
       availability: "Response within 24 hours",
-      icon: "mail" as const
+      icon: "mail" as const,
+      onPress: () => {
+        // Open email client
+        Alert.alert(
+          "Email Support", 
+          "You can email us at support@pillora.my",
+          [
+            { text: "Copy Email", onPress: () => {
+              // Code to copy to clipboard would go here
+              Alert.alert("Copied", "Email address copied to clipboard");
+            }},
+            { text: "OK", style: "cancel" }
+          ]
+        );
+      }
     },
     {
       title: "Phone Support",
-      description: "+60 3-2123 4567",
+      description: "+60 00-000 0000",
       availability: "Mon-Fri, 9 AM - 6 PM MYT",
-      icon: "call" as const
+      icon: "call" as const,
+      onPress: () => {
+        Alert.alert(
+          "Phone Support", 
+          "Call us at +60 3-2123 4567",
+          [
+            { text: "Call", onPress: () => {
+              // Code to initiate phone call would go here
+              console.log("Initiating call to +60 3-2123 4567");
+            }},
+            { text: "Copy Number", onPress: () => {
+              // Code to copy to clipboard would go here
+              Alert.alert("Copied", "Phone number copied to clipboard");
+            }},
+            { text: "Cancel", style: "cancel" }
+          ]
+        );
+      }
     }
   ];
 
@@ -78,22 +230,26 @@ const HelpSupport = () => {
     {
       title: "User Guide",
       description: "Learn how to use Pillora",
-      icon: "book" as const
+      icon: "book" as const,
+      onPress: () => Alert.alert("User Guide", "Opening user guide...")
     },
     {
       title: "Video Tutorials",
       description: "Watch step-by-step guides",
-      icon: "videocam" as const
+      icon: "videocam" as const,
+      onPress: () => Alert.alert("Video Tutorials", "Opening video tutorials...")
     },
     {
       title: "Terms & Privacy",
       description: "Read our policies",
-      icon: "shield-checkmark" as const
+      icon: "shield-checkmark" as const,
+      onPress: () => Alert.alert("Terms & Privacy", "Opening terms and privacy policies...")
     },
     {
       title: "Report a Problem",
       description: "Report bugs or issues",
-      icon: "bug" as const
+      icon: "bug" as const,
+      onPress: () => Alert.alert("Report a Problem", "Opening bug report form...")
     }
   ];
 
@@ -115,7 +271,9 @@ const HelpSupport = () => {
           <View style={styles.header}>
             <View style={styles.headerContent}>
               <Text style={styles.title}>Help & Support</Text>
-              <Text style={styles.subtitle}>We're here to help you</Text>
+              <Text style={styles.subtitle}>
+                {userEmail ? `We're here to help you, ${userEmail.split('@')[0]}` : "We're here to help you"}
+              </Text>
             </View>
           </View>
 
@@ -124,7 +282,12 @@ const HelpSupport = () => {
             <Text style={styles.sectionTitle}>Contact Us</Text>
             
             {supportMethods.map((method, index) => (
-              <Pressable key={index} style={styles.card} onPress={() => {}}>
+              <Pressable 
+                key={index} 
+                style={styles.card} 
+                onPress={method.onPress}
+                disabled={isSubmitting}
+              >
                 <View style={styles.cardContent}>
                   <View style={styles.cardIconContainer}>
                     <Ionicons name={method.icon} size={24} color="#0ea5e9" />
@@ -149,20 +312,70 @@ const HelpSupport = () => {
               </View>
               
               <View style={styles.ticketForm}>
-                <View style={styles.input}>
-                  <Text style={styles.inputPlaceholder}>Subject</Text>
+                <View style={styles.inputContainer}>
+                  <Text style={styles.inputLabel}>Subject *</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="What is your issue about?"
+                    placeholderTextColor="#94a3b8"
+                    value={subject}
+                    onChangeText={setSubject}
+                    editable={!isSubmitting}
+                    maxLength={100}
+                  />
+                  <Text style={styles.charCounter}>
+                    {subject.length}/100 characters
+                  </Text>
                 </View>
-                <View style={[styles.input, styles.textArea]}>
-                  <Text style={styles.inputPlaceholder}>Describe your issue or question...</Text>
+                
+                <View style={styles.inputContainer}>
+                  <Text style={styles.inputLabel}>Description *</Text>
+                  <TextInput
+                    style={[styles.input, styles.textArea]}
+                    placeholder="Please describe your issue or question in detail..."
+                    placeholderTextColor="#94a3b8"
+                    value={description}
+                    onChangeText={setDescription}
+                    editable={!isSubmitting}
+                    multiline
+                    numberOfLines={6}
+                    textAlignVertical="top"
+                    maxLength={1000}
+                  />
+                  <Text style={styles.charCounter}>
+                    {description.length}/1000 characters (Minimum 10)
+                  </Text>
                 </View>
+                
+                <View style={styles.submitInfo}>
+                  <Ionicons name="information-circle" size={16} color="#64748b" />
+                  <Text style={styles.submitInfoText}>
+                    We'll respond to your ticket within 24 hours at {userEmail || "your registered email"}
+                  </Text>
+                </View>
+                
                 <LinearGradient
                   colors={['#0ea5e9', '#0284c7']}
-                  style={styles.submitButton}
+                  style={[styles.submitButton, isSubmitting && styles.submitButtonDisabled]}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 0 }}
                 >
-                  <Pressable onPress={() => {}}>
-                    <Text style={styles.submitButtonText}>Submit Ticket</Text>
+                  <Pressable 
+                    onPress={handleSubmitTicket} 
+                    disabled={isSubmitting}
+                    style={styles.submitButtonPressable}
+                  >
+                    {isSubmitting ? (
+                      <View style={styles.submittingContainer}>
+                        <Ionicons name="time" size={20} color="#fff" />
+                        <Text style={styles.submitButtonText}>Submitting...</Text>
+                      </View>
+                    ) : (
+                      <View style={styles.submitButtonContent}>
+                        <Ionicons name="paper-plane" size={20} color="#fff" />
+                        <Text style={styles.submitButtonText}>Submit Ticket</Text>
+                      </View>
+                    )}
                   </Pressable>
                 </LinearGradient>
               </View>
@@ -178,6 +391,7 @@ const HelpSupport = () => {
                 key={index} 
                 style={styles.faqItem}
                 onPress={() => toggleFaq(index)}
+                disabled={isSubmitting}
               >
                 <View style={styles.faqQuestion}>
                   <Text style={styles.faqQuestionText}>{faq.question}</Text>
@@ -202,7 +416,12 @@ const HelpSupport = () => {
             
             <View style={styles.resourcesGrid}>
               {helpResources.map((resource, index) => (
-                <Pressable key={index} style={styles.resourceCard} onPress={() => {}}>
+                <Pressable 
+                  key={index} 
+                  style={styles.resourceCard} 
+                  onPress={resource.onPress}
+                  disabled={isSubmitting}
+                >
                   <View style={styles.resourceContent}>
                     <View style={styles.resourceIconContainer}>
                       <Ionicons name={resource.icon} size={24} color="#0ea5e9" />
@@ -285,6 +504,7 @@ const styles = StyleSheet.create({
     color: '#0f172a',
     fontFamily: 'Arimo-SemiBold',
     marginBottom: 16,
+    marginLeft: 8,
   },
   card: {
     backgroundColor: '#fff',
@@ -346,7 +566,18 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   ticketForm: {
-    gap: 12,
+    gap: 16,
+  },
+  inputContainer: {
+    marginBottom: 8,
+  },
+  inputLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#0f172a',
+    fontFamily: 'Arimo-SemiBold',
+    marginBottom: 8,
+    marginLeft: 4,
   },
   input: {
     backgroundColor: '#f8fafc',
@@ -355,22 +586,62 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderWidth: 1,
     borderColor: '#e2e8f0',
-  },
-  textArea: {
-    height: 100,
-    textAlignVertical: 'top',
-  },
-  inputPlaceholder: {
-    color: '#64748b',
     fontSize: 16,
     fontFamily: 'Arimo-Regular',
+    color: '#0f172a',
+  },
+  textArea: {
+    height: 120,
+    textAlignVertical: 'top',
+  },
+  charCounter: {
+    fontSize: 12,
+    color: '#64748b',
+    fontFamily: 'Arimo-Regular',
+    textAlign: 'right',
+    marginTop: 4,
+    marginRight: 4,
+  },
+  submitInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f1f5f9',
+    borderRadius: 8,
+    padding: 12,
+    marginTop: 8,
+  },
+  submitInfoText: {
+    fontSize: 14,
+    color: '#64748b',
+    fontFamily: 'Arimo-Regular',
+    marginLeft: 8,
+    flex: 1,
   },
   submitButton: {
     borderRadius: 12,
-    height: 48,
+    height: 52,
     justifyContent: 'center',
     alignItems: 'center',
     marginTop: 8,
+  },
+  submitButtonDisabled: {
+    opacity: 0.7,
+  },
+  submitButtonPressable: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  submitButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  submittingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   submitButtonText: {
     color: '#fff',
