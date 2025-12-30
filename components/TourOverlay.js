@@ -11,20 +11,24 @@ import {
     PanResponder,
 } from 'react-native';
 import { usePathname } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { supabase } from '../lib/supabase';
 
 const { width, height } = Dimensions.get('window');
 
 const TourOverlay = () => {
     const pathname = usePathname();
     const [visible, setVisible] = useState(false);
+    const [hasSeenTour, setHasSeenTour] = useState(true);
     const [currentStep, setCurrentStep] = useState(0);
+    const [userId, setUserId] = useState(null);
+    const [isCompleting, setIsCompleting] = useState(false); // Add this flag
     const pulseAnim = useRef(new Animated.Value(1)).current;
     const pan = useRef(new Animated.ValueXY()).current;
 
     const panResponder = useRef(
         PanResponder.create({
             onMoveShouldSetPanResponder: (_, gestureState) => {
-                // Only claim responder if moved significantly (prevents capturing taps)
                 return Math.abs(gestureState.dx) > 5 || Math.abs(gestureState.dy) > 5;
             },
             onPanResponderMove: Animated.event(
@@ -37,7 +41,7 @@ const TourOverlay = () => {
         })
     ).current;
 
-    // Perfect positions based on YOUR HomeScreen layout
+    // Tour steps remain the same...
     const tourSteps = [
         {
             id: 'welcome',
@@ -46,44 +50,37 @@ const TourOverlay = () => {
             position: { x: width / 2 - 140, y: 150 },
         },
         {
-            id: 'upcoming_doses',
-            title: 'Upcoming Doses',
-            description: 'See medications due today',
-            position: { x: 100, y: 100 }, // Upcoming Doses card (20px padding + 20px offset)
-        },
-        {
             id: 'active_meds',
             title: 'Active Medications',
             description: 'Track your current medicines',
-            position: { x: 100, y: 200 }, // Active Meds card (right side)
+            position: { x: 100, y: 200 },
         },
         {
             id: 'scan_medicine',
             title: 'Scan Medicine',
             description: 'Identify pills with camera',
-            position: { x: 90, y: 380 }, // Top-left quick action
+            position: { x: 90, y: 380 },
         },
         {
             id: 'reminders',
             title: 'Set Reminders',
             description: 'Never miss a dose',
-            position: { x: width - 115, y: 380 }, // Top-right quick action
+            position: { x: width - 115, y: 380 },
         },
         {
             id: 'find_pharmacies',
             title: 'Find Pharmacies',
             description: 'Locate nearby stores',
-            position: { x: 90, y: 500 }, // Bottom-left quick action
+            position: { x: 90, y: 500 },
         },
         {
             id: 'analytics',
             title: 'Analytics',
             description: 'View your medication insights',
-            position: { x: width - 115, y: 500 }, // Bottom-right quick action
+            position: { x: width - 115, y: 500 },
         },
     ];
 
-    // Start pulse animation
     const startPulse = () => {
         Animated.loop(
             Animated.sequence([
@@ -104,20 +101,94 @@ const TourOverlay = () => {
     };
 
     useEffect(() => {
+        const checkTourStatus = async (user) => {
+            if (!user) return;
+            try {
+                setUserId(user.id);
+                const userTourKey = `@tour_seen_${user.id}`;
+                const tourSeen = await AsyncStorage.getItem(userTourKey);
+                console.log('Tour status:', tourSeen);
+                setHasSeenTour(tourSeen === 'true');
+            } catch (e) {
+                console.error("Failed to check tour status", e);
+                setHasSeenTour(false);
+            }
+        };
+        
+        supabase.auth.getUser().then(({ data: { user } }) => {
+            if (user) checkTourStatus(user);
+        });
+
+        const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+            if (event === 'SIGNED_IN' && session?.user) {
+                checkTourStatus(session.user);
+            } else if (event === 'SIGNED_OUT') {
+                setUserId(null);
+                setHasSeenTour(true);
+            }
+        });
+
+        return () => {
+            authListener.subscription.unsubscribe();
+        };
+    }, []);
+
+    useEffect(() => {
         // Auto-start tour when on home screen
-        if (pathname === '/home' && !visible) {
+        console.log('useEffect check:', { 
+            pathname, 
+            visible, 
+            hasSeenTour, 
+            userId, 
+            isCompleting 
+        });
+        
+        if (pathname === '/home' && !visible && !hasSeenTour && userId && !isCompleting) {
+            console.log('Starting auto tour');
             setTimeout(() => {
                 setVisible(true);
+                setCurrentStep(0);
                 startPulse();
             }, 1500);
         }
-    }, [pathname]);
+    }, [pathname, visible, hasSeenTour, userId, isCompleting]);
+
+    const markTourAsSeen = async () => {
+        if (!userId) return;
+        
+        try {
+            console.log('Marking tour as seen for user:', userId);
+            const userTourKey = `@tour_seen_${userId}`;
+            await AsyncStorage.setItem(userTourKey, 'true');
+            setHasSeenTour(true);
+            console.log('Tour marked as seen successfully');
+        } catch (e) {
+            console.error("Failed to save tour status.", e);
+        }
+    };
+
+    const completeTour = async () => {
+        console.log('Completing tour');
+        setIsCompleting(true);
+        pulseAnim.stopAnimation();
+        await markTourAsSeen();
+        setVisible(false);
+        setCurrentStep(0);
+        
+        // Reset the completion flag after a delay
+        setTimeout(() => {
+            setIsCompleting(false);
+        }, 1000);
+    };
 
     const nextStep = () => {
+        console.log('Next step called. Current step:', currentStep, 'Total steps:', tourSteps.length);
+        
         if (currentStep < tourSteps.length - 1) {
             setCurrentStep(prev => prev + 1);
         } else {
-            setVisible(false);
+            // This is the last step
+            completeTour();
         }
     };
 
@@ -128,14 +199,17 @@ const TourOverlay = () => {
     };
 
     const showTour = () => {
+        console.log('Manual tour start');
         setCurrentStep(0);
         setVisible(true);
         startPulse();
     };
 
     const hideTour = () => {
-        setVisible(false);
+        console.log('Hiding tour manually');
         pulseAnim.stopAnimation();
+        setVisible(false);
+        markTourAsSeen();
     };
 
     // Only show on home screen
@@ -144,19 +218,20 @@ const TourOverlay = () => {
     }
 
     if (!visible) {
-        // Show floating button to start tour
         return (
-            <Animated.View
-                style={[
-                    styles.floatingStartButtonContainer,
-                    { transform: [{ translateX: pan.x }, { translateY: pan.y }] }
-                ]}
-                {...panResponder.panHandlers}
-            >
-                <TouchableOpacity style={styles.floatingStartButton} onPress={showTour} activeOpacity={0.8}>
-                    <Text style={styles.floatingStartText}>🎯 Start Tour</Text>
-                </TouchableOpacity>
-            </Animated.View>
+            <>
+                <Animated.View
+                    style={[
+                        styles.floatingStartButtonContainer,
+                        { transform: [{ translateX: pan.x }, { translateY: pan.y }] }
+                    ]}
+                    {...panResponder.panHandlers}
+                >
+                    <TouchableOpacity style={styles.floatingStartButton} onPress={showTour} activeOpacity={0.8}>
+                        <Text style={styles.floatingStartText}>🎯 Start Tour</Text>
+                    </TouchableOpacity>
+                </Animated.View>
+            </>
         );
     }
 
@@ -167,24 +242,23 @@ const TourOverlay = () => {
             visible={visible}
             transparent={true}
             animationType="fade"
-            onRequestClose={hideTour}
+            onRequestClose={completeTour} // Changed to completeTour
         >
-            {/* Semi-transparent overlay that shows your screen underneath */}
             <View style={styles.modalContainer}>
-                {/* Dark overlay with reduced opacity */}
                 <View style={styles.overlay} />
 
-                {/* Skip button */}
-                <TouchableOpacity style={styles.skipButton} onPress={hideTour}>
+                <TouchableOpacity style={styles.skipButton} onPress={completeTour}>
                     <Text style={styles.skipText}>Skip Tour</Text>
                 </TouchableOpacity>
 
-                {/* Restart button */}
-                <TouchableOpacity style={styles.restartButton} onPress={showTour}>
+                <TouchableOpacity style={styles.restartButton} onPress={() => {
+                    pulseAnim.stopAnimation();
+                    setCurrentStep(0);
+                    startPulse();
+                }}>
                     <Text style={styles.restartText}>Restart</Text>
                 </TouchableOpacity>
 
-                {/* Highlight circle with pulse animation */}
                 {currentStepData.id !== 'welcome' && (
                     <Animated.View
                         style={[
@@ -196,16 +270,12 @@ const TourOverlay = () => {
                             }
                         ]}
                     >
-                        {/* Outer glow */}
                         <View style={styles.outerGlow} />
-                        {/* Middle ring */}
                         <View style={styles.middleRing} />
-                        {/* Inner circle */}
                         <View style={styles.innerCircle} />
                     </Animated.View>
                 )}
 
-                {/* Tooltip - positioned based on step */}
                 <View style={[
                     styles.tooltip,
                     {
@@ -247,6 +317,7 @@ const TourOverlay = () => {
     );
 };
 
+// Styles remain the same...
 const styles = StyleSheet.create({
     modalContainer: {
         flex: 1,
@@ -254,7 +325,7 @@ const styles = StyleSheet.create({
     },
     overlay: {
         ...StyleSheet.absoluteFillObject,
-        backgroundColor: 'rgba(0, 0, 0, 0.4)', // Light overlay - shows your screen clearly
+        backgroundColor: 'rgba(0, 0, 0, 0.4)',
     },
     highlightContainer: {
         position: 'absolute',
@@ -355,45 +426,43 @@ const styles = StyleSheet.create({
     },
     skipButton: {
         position: 'absolute',
-        top: 50,
+        top: 60,
         right: 20,
-        paddingHorizontal: 16,
-        paddingVertical: 8,
-        backgroundColor: 'rgba(255, 255, 255, 0.95)',
-        borderRadius: 20,
-        borderWidth: 1,
-        borderColor: 'rgba(0, 0, 0, 0.1)',
+        backgroundColor: '#FFFFFF',
+        paddingHorizontal: 20,
+        paddingVertical: 10,
+        borderRadius: 30,
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-        elevation: 3,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.15,
+        shadowRadius: 12,
+        elevation: 5,
+        zIndex: 50,
     },
     skipText: {
-        color: '#0F172A',
+        color: '#64748B',
         fontSize: 14,
-        fontWeight: '600',
+        fontWeight: '700',
     },
     restartButton: {
         position: 'absolute',
-        top: 50,
+        top: 60,
         left: 20,
-        paddingHorizontal: 16,
-        paddingVertical: 8,
-        backgroundColor: 'rgba(255, 255, 255, 0.95)',
-        borderRadius: 20,
-        borderWidth: 1,
-        borderColor: 'rgba(0, 0, 0, 0.1)',
+        backgroundColor: '#FFFFFF',
+        paddingHorizontal: 20,
+        paddingVertical: 10,
+        borderRadius: 30,
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-        elevation: 3,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.15,
+        shadowRadius: 12,
+        elevation: 5,
+        zIndex: 50,
     },
     restartText: {
-        color: '#0F172A',
+        color: '#0EA5E9',
         fontSize: 14,
-        fontWeight: '600',
+        fontWeight: '700',
     },
     floatingStartButtonContainer: {
         position: 'absolute',
