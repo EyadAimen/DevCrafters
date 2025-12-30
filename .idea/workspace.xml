@@ -14,6 +14,19 @@
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app/(tabs)/admin-dashboard.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/(tabs)/admin-dashboard.tsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app/(tabs)/login.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/(tabs)/login.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/app/(tabs)/receipt.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/app/utils/generateReceiptPDF.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/app/utils/logMissedIntakes.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.expo/types/router.d.ts" beforeDir="false" afterPath="$PROJECT_DIR$/.expo/types/router.d.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/caches/deviceStreaming.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/caches/deviceStreaming.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/(tabs)/MedicationHistoryScreen.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/(tabs)/MedicationHistoryScreen.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/(tabs)/handlePayment.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/(tabs)/handlePayment.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/(tabs)/home.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/(tabs)/home.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/(tabs)/medicine/[medicineId]/index.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/(tabs)/medicine/[medicineId]/index.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/(tabs)/onlineRefillOrder3.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/(tabs)/onlineRefillOrder3.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/intake/confirm.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/intake/confirm.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/expo-env.d.ts" beforeDir="false" afterPath="$PROJECT_DIR$/expo-env.d.ts" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -58,6 +71,7 @@
   "keyToString": {
     "ModuleVcsDetector.initialDetectionPerformed": "true",
     "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager": "true",
     "RunOnceActivity.cidr.known.project.marker": "true",
     "RunOnceActivity.git.unshallow": "true",
     "RunOnceActivity.readMode.enableVisualFormatting": "true",
@@ -70,6 +84,12 @@
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
       <recent name="$PROJECT_DIR$/assets" />
+    "git-widget-placeholder": "chuah---sprint5"
+  }
+}]]></component>
+  <component name="RecentsManager">
+    <key name="MoveFile.RECENT_KEYS">
+      <recent name="C:\Users\DELL\StudioProjects\DevCrafters\app" />
     </key>
   </component>
   <component name="TaskManager">

@@ -16,8 +16,7 @@ type Medicine = {
 	lowStockThreshold?: number; // default 5
 	frequencyText: string; // e.g. "Once daily"
 	expiryDate?: string; // YYYY-MM-DD format
-	scheduledTime?: string; // Time in HH:MM format from reminder table (e.g., "08:00")
-	days?: string[]; // Array of days when reminder is scheduled (e.g., ["Monday", "Tuesday"])
+	scheduledTimes?: string[]; // Array of HH:MM times from reminder table
 };
 
 type TabKey = "ALL" | "DUE_TODAY" | "LOW_STOCK";
@@ -33,6 +32,12 @@ const ActiveMeds = () => {
 		sortBy: "name", // "name", "expiry", "stock"
 		sortOrder: "asc" // "asc", "desc"
 	});
+	const [now, setNow] = useState(new Date());
+
+	useEffect(() => {
+		const timer = setInterval(() => setNow(new Date()), 60000);
+		return () => clearInterval(timer);
+	}, []);
 
 	useEffect(() => {
 		fetchMedicines();
@@ -76,25 +81,26 @@ const ActiveMeds = () => {
 			if (medicineIds.length > 0) {
 				const remindersResponse = await supabase
 					.from('reminders')
-					.select('medicine_id, scheduled_time, days')
+					.select('medicine_id, scheduled_time')
 					.in('medicine_id', medicineIds);
 				remindersData = remindersResponse.data;
 			}
 
-			// Create a map of medicine_id to reminder data
-			const reminderMap = new Map<string, { scheduled_time: string; days: string[] }>();
+			// Create a map of medicine_id to scheduled_times array
+			const reminderMap = new Map<string, string[]>();
 			if (remindersData) {
 				remindersData.forEach((reminder: any) => {
-					reminderMap.set(reminder.medicine_id, {
-						scheduled_time: reminder.scheduled_time || '',
-						days: reminder.days || []
-					});
+					if (reminder.scheduled_time) {
+						const existing = reminderMap.get(reminder.medicine_id) || [];
+						existing.push(reminder.scheduled_time);
+						reminderMap.set(reminder.medicine_id, existing);
+					}
 				});
 			}
 
 			// Map database fields to Medicine type
 			const mappedMedicines: Medicine[] = medicinesData.map((med: any) => {
-				const reminder = reminderMap.get(med.medicine_id);
+				const times = reminderMap.get(med.medicine_id) || [];
 				return {
 					id: med.medicine_id, // ✅ use medicine_id
 					name: med.medicine_name || '',
@@ -103,8 +109,7 @@ const ActiveMeds = () => {
 					lowStockThreshold: 5,
 					frequencyText: med.frequency || '',
 					expiryDate: med.expiry_date || undefined,
-					scheduledTime: reminder?.scheduled_time || undefined,
-					days: reminder?.days || undefined
+					scheduledTimes: times
 				};
 			});
 
@@ -287,20 +292,44 @@ const ActiveMeds = () => {
 	const renderCard = ({ item }: { item: Medicine }) => {
 		const low = item.quantity <= (item.lowStockThreshold ?? 5);
 
-		const reminderDisplay = item.scheduledTime
-			? (() => {
-				const formatTime = (timeStr: string): string => {
-					if (!timeStr || !/^\d{2}:\d{2}$/.test(timeStr)) return timeStr;
-					const [hours, minutes] = timeStr.split(':').map(Number);
-					const period = hours >= 12 ? 'PM' : 'AM';
-					const displayHours = hours % 12 || 12;
-					return `${displayHours}:${minutes.toString().padStart(2, '0')} ${period}`;
-				};
-				const isToday = true; // TODO: implement actual day logic
-				const timeFormatted = formatTime(item.scheduledTime);
-				return `Next: ${timeFormatted} ${isToday ? 'today' : 'tomorrow'}`;
-			})()
-			: "";
+		const nextDose = (() => {
+			if (!item.scheduledTimes || item.scheduledTimes.length === 0) return null;
+
+			const currentH = now.getHours();
+			const currentM = now.getMinutes();
+
+			let nextReminderTime: string | null = null;
+			let smallestDiff = Infinity;
+
+			for (const timeStr of item.scheduledTimes) {
+				const [h, m] = timeStr.split(':').map(Number);
+				let minutesUntil = (h * 60 + m) - (currentH * 60 + currentM);
+				if (minutesUntil < 0) minutesUntil += 24 * 60; // Next day
+
+				if (minutesUntil < smallestDiff) {
+					smallestDiff = minutesUntil;
+					nextReminderTime = timeStr;
+				}
+			}
+
+			if (!nextReminderTime) return null;
+
+			const [nextH, nextM] = nextReminderTime.split(':').map(Number);
+			const targetDate = new Date(now);
+			targetDate.setHours(nextH, nextM, 0, 0);
+			if (targetDate <= now) {
+				targetDate.setDate(targetDate.getDate() + 1);
+			}
+
+			const timeString = targetDate.toLocaleTimeString('en-US', {
+				hour: 'numeric',
+				minute: '2-digit',
+				hour12: true
+			});
+
+			const isToday = targetDate.getDate() === now.getDate();
+			return `${timeString}, ${isToday ? 'Today' : 'Tomorrow'}`;
+		})();
 
 		return (
 
@@ -336,10 +365,10 @@ const ActiveMeds = () => {
 									<Text style={styles.metaText}>{item.frequencyText}</Text>
 								</View>
 							</View>
-							{reminderDisplay && (
+							{nextDose && (
 								<View style={styles.reminderRow}>
 									<Image source={require("../../assets/reminderIcon.png")} style={styles.reminderIcon} resizeMode="contain" />
-									<Text style={styles.reminderText}>{reminderDisplay}</Text>
+									<Text style={styles.reminderText}>Next: {nextDose}</Text>
 								</View>
 							)}
 							<Text style={[styles.stockText, low ? styles.stockLow : undefined]}>{item.quantity} pills left</Text>
@@ -661,7 +690,7 @@ const styles = StyleSheet.create({
 	},
 	reminderText: {
 		fontSize: 12,
-		color: "#64748b"
+		color: "#0ea5e9"
 	},
 	stockText: {
 		marginTop: 4,
