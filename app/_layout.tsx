@@ -13,10 +13,8 @@ export default function RootLayout() {
     const pathname = usePathname();
 
     useEffect(() => {
-        const isTutorial =
-            pathname === "/tutorial" || pathname.startsWith("/step") || pathname === "/welcome" || pathname === "/";
-
-        if (!isTutorial) {
+        // Only run the biometric check on the login screen.
+        if (pathname === '/login') {
             checkBiometricLogin();
         }
 
