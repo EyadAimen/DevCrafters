@@ -8,6 +8,7 @@ import BottomNavigation from "../../components/BottomNavigation";
 import { useRouter, useFocusEffect } from "expo-router";
 import { supabase } from "../../lib/supabase";
 import { useCallback } from "react";
+import { Biometrics } from "../../lib/biometrics";
 
 type SettingRowProps = {
   title: string;
@@ -194,21 +195,25 @@ const Profile: React.FC = () => {
             title="Pharmacies"
             subtitle="Manage preferred locations"
             icon={require("../../assets/profilePharmacy.png")}
+            onPress={() => router.push("/pharmacyLocator")}
           />
           <SettingRow
             title="Privacy & Security"
             subtitle="Control your data"
             icon={require("../../assets/profilePrivacy.png")}
+            onPress={() => router.push("/privacySecurityScreen")}
           />
           <SettingRow
             title="Help & Support"
             subtitle="Get assistance"
             icon={require("../../assets/profileHelp.png")}
+            onPress={() => router.push("/helpSupport")}
           />
         </View>
 
         {/* Logout */}
         <Pressable style={styles.logoutButton} onPress={async () => {
+          await Biometrics.deleteSession();
           await supabase.auth.signOut();
           router.push("/login");
         }}>
