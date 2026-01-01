@@ -21,19 +21,50 @@ export default function CreateNewPassword() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   useEffect(() => {
-    verifyRecoverySession();
-  }, []);
+    let mounted = true;
 
-  const verifyRecoverySession = async () => {
-    const { data: { session }, error } = await supabase.auth.getSession();
-    if (error || !session) {
-      Alert.alert(
-        "Error",
-        "Unable to verify your reset request. Please request a new reset link.",
-        [{ text: "OK", onPress: () => router.push("/forgot-password") }]
+    const verifySession = async () => {
+      // 1. Check immediately
+      const { data: { session: initialSession } } = await supabase.auth.getSession();
+      if (initialSession) {
+        return; // Session exists, all good
+      }
+
+      // 2. If not found, wait for it (Race condition fix)
+      // Listen for auth changes for up to 10 seconds
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("Timeout")), 10000)
       );
-    }
-  };
+
+      const sessionPromise = new Promise((resolve) => {
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+          if (session) {
+            resolve(session);
+            subscription.unsubscribe();
+          }
+        });
+      });
+
+      try {
+        await Promise.race([sessionPromise, timeoutPromise]);
+        // Session found within timeout, do nothing (user can proceed)
+      } catch (e) {
+        if (mounted) {
+          Alert.alert(
+            "Error",
+            "Unable to verify your reset request. Please request a new reset link.",
+            [{ text: "OK", onPress: () => router.push("/forgot-password") }]
+          );
+        }
+      }
+    };
+
+    verifySession();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const handleResetPassword = async () => {
     if (!password || !confirmPassword) {
@@ -154,7 +185,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#E0EFF6",
     padding: 24,
-    justifyContent: "left",
+    justifyContent: "flex-start",
   },
   title: {
     fontSize: 22,
