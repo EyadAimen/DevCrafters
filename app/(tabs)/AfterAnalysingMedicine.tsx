@@ -90,8 +90,8 @@ const AfterAnalysingMedicine = () => {
 
   // Extract medicine name from params and fetch data
   React.useEffect(() => {
-    // Get medicine name from navigation params or use a default
-    const medicineName = params.medicineName as string || "Lisinopril";
+    // Get medicine name from navigation params
+    const medicineName = params.medicineName as string || null;
     setExtractedMedicineName(medicineName);
     
     if (medicineName) {
