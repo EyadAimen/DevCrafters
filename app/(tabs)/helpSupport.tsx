@@ -12,13 +12,14 @@ import {
 } from "react-native";
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from "react-native-safe-area-context";
-import BottomNavigation from "../../components/BottomNavigation";
-import { Ionicons } from '@expo/vector-icons';
+import { Feather, Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { supabase } from "../../lib/supabase";
 
 const { width: screenWidth } = Dimensions.get('window');
 
 const HelpSupport = () => {
+  const router = useRouter();
   const [expandedFaqs, setExpandedFaqs] = React.useState<number[]>([]);
   const [subject, setSubject] = React.useState("");
   const [description, setDescription] = React.useState("");
@@ -209,11 +210,11 @@ const HelpSupport = () => {
       onPress: () => {
         Alert.alert(
           "Phone Support", 
-          "Call us at +60 3-2123 4567",
+          "Call us at +60 00-000 0000",
           [
             { text: "Call", onPress: () => {
               // Code to initiate phone call would go here
-              console.log("Initiating call to +60 3-2123 4567");
+              console.log("Initiating call to +60 00-000 0000");
             }},
             { text: "Copy Number", onPress: () => {
               // Code to copy to clipboard would go here
@@ -269,10 +270,14 @@ const HelpSupport = () => {
         >
           {/* Header */}
           <View style={styles.header}>
-            <View style={styles.headerContent}>
+            <View style={styles.headerTopRow}>
+              <Pressable onPress={() => router.back()} style={styles.backButton}>
+                <Feather name="arrow-left" size={24} color="#0f172a" />
+              </Pressable>
               <Text style={styles.title}>Help & Support</Text>
-              <Text style={styles.subtitle}>
-                {userEmail ? `We're here to help you, ${userEmail.split('@')[0]}` : "We're here to help you"}
+            </View>
+            <View style={styles.headerContent}>
+              <Text style={styles.subtitle}> {userEmail && userEmail.includes('@') ? `We're here to help you, ${userEmail.split('@')[0]}` : "We're here to help you"}
               </Text>
             </View>
           </View>
@@ -299,6 +304,34 @@ const HelpSupport = () => {
                   </View>
                   <Ionicons name="chevron-forward" size={20} color="#64748b" />
                 </View>
+              </Pressable>
+            ))}
+          </View>
+
+          {/* FAQ Section */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Frequently Asked Questions</Text>
+            
+            {faqItems.map((faq, index) => (
+              <Pressable 
+                key={index} 
+                style={styles.faqItem}
+                onPress={() => toggleFaq(index)}
+                disabled={isSubmitting}
+              >
+                <View style={styles.faqQuestion}>
+                  <Text style={styles.faqQuestionText}>{faq.question}</Text>
+                  <Ionicons 
+                    name={expandedFaqs.includes(index) ? "chevron-up" : "chevron-down"} 
+                    size={20} 
+                    color="#64748b" 
+                  />
+                </View>
+                {expandedFaqs.includes(index) && (
+                  <View style={styles.faqAnswer}>
+                    <Text style={styles.faqAnswerText}>{faq.answer}</Text>
+                  </View>
+                )}
               </Pressable>
             ))}
           </View>
@@ -382,34 +415,6 @@ const HelpSupport = () => {
             </View>
           </View>
 
-          {/* FAQ Section */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Frequently Asked Questions</Text>
-            
-            {faqItems.map((faq, index) => (
-              <Pressable 
-                key={index} 
-                style={styles.faqItem}
-                onPress={() => toggleFaq(index)}
-                disabled={isSubmitting}
-              >
-                <View style={styles.faqQuestion}>
-                  <Text style={styles.faqQuestionText}>{faq.question}</Text>
-                  <Ionicons 
-                    name={expandedFaqs.includes(index) ? "chevron-up" : "chevron-down"} 
-                    size={20} 
-                    color="#64748b" 
-                  />
-                </View>
-                {expandedFaqs.includes(index) && (
-                  <View style={styles.faqAnswer}>
-                    <Text style={styles.faqAnswerText}>{faq.answer}</Text>
-                  </View>
-                )}
-              </Pressable>
-            ))}
-          </View>
-
           {/* Help Resources */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Help Resources</Text>
@@ -450,11 +455,6 @@ const HelpSupport = () => {
             <Text style={styles.footerText}>Pillora Support Team • Available 24/7</Text>
           </View>
         </ScrollView>
-        
-        {/* Bottom Navigation */}
-        <View style={styles.bottomNavWrapper}>
-          <BottomNavigation />
-        </View>
       </LinearGradient>
     </SafeAreaView>
   );
@@ -482,12 +482,19 @@ const styles = StyleSheet.create({
   headerContent: {
     marginBottom: 16,
   },
+  headerTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+   backButton: {
+    marginRight: 12,
+  },
   title: {
     fontSize: 28,
     fontWeight: 'bold',
     color: '#0f172a',
     fontFamily: 'Arimo-Bold',
-    marginBottom: 8,
   },
   subtitle: {
     fontSize: 16,
