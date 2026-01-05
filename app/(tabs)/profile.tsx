@@ -187,11 +187,6 @@ const Profile: React.FC = () => {
             onPress={() => router.push("/MedicationHistoryScreen")}
           />
           <SettingRow
-            title="Payment Methods"
-            subtitle="Saved cards and wallets"
-            icon={require("../../assets/profilePayment.png")}
-          />
-          <SettingRow
             title="Pharmacies"
             subtitle="Manage preferred locations"
             icon={require("../../assets/profilePharmacy.png")}
