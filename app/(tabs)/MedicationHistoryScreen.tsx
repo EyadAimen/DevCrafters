@@ -20,7 +20,7 @@ type MedicationRecord = {
   intake_time: string;
   intake_date: Date;
   dateHeader?: string;
-  isMissed?: boolean; // new flag for missed intakes
+  isMissed?: boolean;
 };
 
 export default function MedicationHistoryScreen() {
@@ -101,20 +101,29 @@ export default function MedicationHistoryScreen() {
         });
       });
 
-      // Map missed intake to scheduled date
+      // Map missed intake
       missedData?.forEach((record: any) => {
         const scheduledDate = new Date(record.scheduled_time);
-        records.push({
-          id: `missed-${record.id}`,
-          medicine_name: record.medicine_name || "Unknown (Missed)",
-          intake_time: scheduledDate.toLocaleTimeString([], {
-            hour: "2-digit",
-            minute: "2-digit",
-            hour12: true,
-          }),
-          intake_date: scheduledDate,
-          isMissed: true,
+
+        // Prevent showing missed if user already took the medicine that day
+        const takenToday = intakeData?.some((intake: any) => {
+          const intakeDay = new Date(intake.intake_time).toDateString();
+          return intakeDay === scheduledDate.toDateString() && intake.reminder_id === record.reminder_id;
         });
+
+        if (!takenToday) {
+          records.push({
+            id: `missed-${record.id}`,
+            medicine_name: record.medicine_name || "Unknown (Missed)",
+            intake_time: scheduledDate.toLocaleTimeString([], {
+              hour: "2-digit",
+              minute: "2-digit",
+              hour12: true,
+            }),
+            intake_date: scheduledDate,
+            isMissed: true,
+          });
+        }
       });
 
       setHistory(records);
@@ -132,13 +141,11 @@ export default function MedicationHistoryScreen() {
       return;
     }
 
-    // Step 1: Filter by date range
     let dateFiltered = [...history];
 
     if (startDate) {
       const normalizedStart = new Date(startDate);
       normalizedStart.setHours(0, 0, 0, 0);
-
       dateFiltered = dateFiltered.filter((record) => {
         const recordDate = new Date(record.intake_date);
         recordDate.setHours(0, 0, 0, 0);
@@ -149,14 +156,12 @@ export default function MedicationHistoryScreen() {
     if (endDate) {
       const normalizedEnd = new Date(endDate);
       normalizedEnd.setHours(23, 59, 59, 999);
-
       dateFiltered = dateFiltered.filter((record) => {
         const recordDate = new Date(record.intake_date);
         return recordDate <= normalizedEnd;
       });
     }
 
-    // Step 2: Filter by search query
     let searchFiltered = dateFiltered;
     if (searchQuery.trim()) {
       searchFiltered = dateFiltered.filter((record) =>
@@ -164,7 +169,6 @@ export default function MedicationHistoryScreen() {
       );
     }
 
-    // Step 3: Group by date and add headers
     const grouped: { [date: string]: MedicationRecord[] } = {};
 
     searchFiltered.forEach((record) => {
@@ -173,14 +177,12 @@ export default function MedicationHistoryScreen() {
       grouped[dateKey].push(record);
     });
 
-    // Step 4: Build final result with date headers
     const result: MedicationRecord[] = [];
 
     Object.keys(grouped)
       .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())
       .forEach((dateKey) => {
         const dateObj = new Date(dateKey);
-
         const dateHeader = dateObj.toLocaleDateString("en-US", {
           weekday: "long",
           day: "numeric",
@@ -193,10 +195,9 @@ export default function MedicationHistoryScreen() {
           medicine_name: "",
           intake_time: "",
           intake_date: dateObj,
-          dateHeader: dateHeader,
+          dateHeader,
         });
 
-        // Sort by time within the day
         const dayRecords = grouped[dateKey].sort(
           (a, b) => a.intake_date.getTime() - b.intake_date.getTime()
         );
@@ -207,7 +208,6 @@ export default function MedicationHistoryScreen() {
     setFilteredHistory(result);
   };
 
-  // Date picker handlers
   const onStartDateChange = (event: any, selectedDate?: Date) => {
     setShowStartPicker(false);
     if (selectedDate) {
@@ -295,10 +295,9 @@ export default function MedicationHistoryScreen() {
           </Pressable>
         </View>
 
-        {/* DATE RANGE FILTER */}
+        {/* Date range filter */}
         <View style={[styles.card, { marginTop: 16 }]}>
           <Text style={styles.sectionTitle}>Filter by Date Range</Text>
-
           <View style={styles.dateRow}>
             <Pressable
               style={styles.dateFilterButton}
@@ -386,7 +385,7 @@ export default function MedicationHistoryScreen() {
                     {record.isMissed ? " (Missed)" : ""}
                   </Text>
                   <Text style={styles.medicationTime}>
-                    Missed at {record.intake_time}
+                    {record.isMissed ? "Missed at" : "Taken at"} {record.intake_time}
                   </Text>
                 </View>
               );

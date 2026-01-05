@@ -351,6 +351,39 @@ const ReminderModal = ({
   );
 };
 
+const logMissedIntake = async (reminderId, medicineName, scheduledTime) => {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    // Avoid duplicates: check if already logged
+    const { data: existing } = await supabase
+      .from('missed_intake')
+      .select('*')
+      .eq('reminder_id', reminderId)
+      .eq('user_id', user.id)
+      .eq('scheduled_time', scheduledTime)
+      .limit(1);
+
+    if (existing?.length > 0) return;
+
+    // Insert missed intake
+    const { data, error } = await supabase
+      .from('missed_intake')
+      .insert({
+        user_id: user.id,
+        reminder_id: reminderId,
+        medicine_name: medicineName,
+        scheduled_time: scheduledTime,
+      });
+
+    if (error) console.error('Error logging missed intake:', error);
+    else console.log('Missed intake logged:', data);
+  } catch (error) {
+    console.error('Error in logMissedIntake:', error);
+  }
+};
+
 // ============= STAT CARD COMPONENT =============
 const StatCard = ({ icon, label, value }) => (
   <Pressable style={styles.smallCard}>
@@ -906,19 +939,34 @@ export default function Reminders() {
   }, [reminders, notificationsInitialized, loadingReminders, hasScheduledInitialNotifications]);
 
   useEffect(() => {
-    const subscription = Notifications.addNotificationReceivedListener(notification => {
+    const receivedListener = Notifications.addNotificationReceivedListener(notification => {
+      const { reminderId, medicineName, scheduledTime } = notification.request.content.data;
+
       console.log('Notification received:', notification.request.identifier);
+
+      // Start 1-minute timer for auto-missed
+      setTimeout(() => {
+        // Only log if user did NOT toggle the reminder to "taken"
+        if (!reminderToggles[reminderId]) {
+          logMissedIntake(reminderId, medicineName, scheduledTime);
+        }
+      }, 60000); // 1 minute
     });
 
-    const responseSubscription = Notifications.addNotificationResponseReceivedListener(response => {
-      console.log('Notification response:', response.notification.request.identifier);
+    const responseListener = Notifications.addNotificationResponseReceivedListener(response => {
+      const { reminderId } = response.notification.request.content.data;
+      console.log('Notification response (user tapped):', response.notification.request.identifier);
+
+      // Mark the reminder as taken to prevent auto-missed
+      setReminderToggles(prev => ({ ...prev, [reminderId]: true }));
     });
 
     return () => {
-      subscription.remove();
-      responseSubscription.remove();
+      receivedListener.remove();
+      responseListener.remove();
     };
-  }, []);
+  }, [reminderToggles]);
+
 
 
 
