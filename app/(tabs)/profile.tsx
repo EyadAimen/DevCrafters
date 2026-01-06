@@ -49,14 +49,30 @@ const Profile: React.FC = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      const { count, error } = await supabase
+      // 1. Get all disposable medicines
+      const { data: medicines, error: medsError } = await supabase
         .from('medicines')
-        .select('*', { count: 'exact', head: true })
+        .select('medicine_id')
         .eq('user_id', user.id)
         .eq('is_disposable', true);
 
-      if (error) console.error('Error fetching disposal count:', error);
-      else setDisposalCount(count || 0);
+      if (medsError) throw medsError;
+
+      // 2. Get all physically disposed logs
+      const { data: logs, error: logsError } = await supabase
+        .from('disposal_log')
+        .select('medicine_id')
+        .eq('user_id', user.id)
+        .eq('action_type', 'DISPOSED_PHYSICALLY');
+
+      if (logsError) throw logsError;
+
+      // 3. pending = medicines - logs
+      if (medicines) {
+        const disposedIds = new Set(logs?.map(l => l.medicine_id));
+        const pendingCount = medicines.filter(m => !disposedIds.has(m.medicine_id)).length;
+        setDisposalCount(pendingCount);
+      }
 
     } catch (error) {
       console.error('Error in fetchDisposalCount:', error);

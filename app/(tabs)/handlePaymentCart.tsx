@@ -73,8 +73,8 @@ const HandlePaymentCart = () => {
   }, [fetchCart]);
 
   const cartTotal = cartItems.reduce((sum, item) => {
-    const pm = Array.isArray(item.pharmacy_medicine) 
-      ? item.pharmacy_medicine[0] 
+    const pm = Array.isArray(item.pharmacy_medicine)
+      ? item.pharmacy_medicine[0]
       : item.pharmacy_medicine;
     const price = pm?.price || 0;
     return sum + price * item.quantity;
@@ -137,6 +137,14 @@ const HandlePaymentCart = () => {
 
       // 4️⃣ Payment successful, create order
       const totalAmount = cartTotal;
+
+      // Create a summary string of medicines
+      const medicineNamesStr = cartItems.map(item => {
+        const pm = Array.isArray(item.pharmacy_medicine) ? item.pharmacy_medicine[0] : item.pharmacy_medicine;
+        const ref = Array.isArray(pm?.medicine_reference) ? pm.medicine_reference[0] : pm?.medicine_reference;
+        return ref?.medicine_name || "Unknown Item";
+      }).join(", ");
+
       const orderData = {
         user_id: userId,
         status: "completed",
@@ -144,6 +152,8 @@ const HandlePaymentCart = () => {
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         pharmacy_name: pharmacyName || "Unknown Pharmacy",
+        pharmacy_id: pharmacyId, // Add pharmacy_id
+        medicine_name: medicineNamesStr, // Add summary of medicines
         payment_method: "stripe",
         quantity: cartItems.reduce((acc, i) => acc + i.quantity, 0),
       };
@@ -162,11 +172,11 @@ const HandlePaymentCart = () => {
 
       // 5️⃣ Create order_items & deduct stock
       for (const item of cartItems) {
-        const pm = Array.isArray(item.pharmacy_medicine) 
-          ? item.pharmacy_medicine[0] 
+        const pm = Array.isArray(item.pharmacy_medicine)
+          ? item.pharmacy_medicine[0]
           : item.pharmacy_medicine;
-        const ref = Array.isArray(pm?.medicine_reference) 
-          ? pm.medicine_reference[0] 
+        const ref = Array.isArray(pm?.medicine_reference)
+          ? pm.medicine_reference[0]
           : pm?.medicine_reference;
         const quantity = item.quantity;
         const unitPrice = pm?.price || 0;
@@ -176,15 +186,21 @@ const HandlePaymentCart = () => {
           continue;
         }
 
-        // Insert order_item
-        await supabase.from("order_items").insert([{
+        console.log(`Saving item: ${ref?.medicine_name || "Unknown"} (Qty: ${quantity}, Price: ${unitPrice})`);
+
+        const { error: insertError } = await supabase.from("order_items").insert([{
           order_id: order.order_id,
           medicine_name: ref?.medicine_name || "Unknown",
           quantity,
           unit_price: unitPrice,
-          subtotal: unitPrice * quantity,
           created_at: new Date().toISOString(),
         }]);
+
+        if (insertError) {
+          console.error("❌ Error inserting order item:", insertError);
+          // Don't just throw, alert so the user sees it immediately in the UI
+          throw new Error(`Failed to save item ${ref?.medicine_name}: ${insertError.message}`);
+        }
 
         // Deduct stock
         const newStock = Math.max((pm.stock || 0) - quantity, 0);
@@ -273,24 +289,24 @@ const HandlePaymentCart = () => {
           </View>
         </View>
 
-      <TouchableOpacity
-        style={[styles.payButton, (isProcessing || cartItems.length === 0) && styles.payButtonDisabled]}
-        onPress={handlePayment}
-        disabled={isProcessing || cartItems.length === 0}
-      >
-        {isProcessing ? (
-          <View style={styles.processingRow}>
-            <ActivityIndicator color="#fff" />
-            <Text style={styles.payButtonText}>Processing…</Text>
-          </View>
-        ) : (
-          <Text style={styles.payButtonText}>Pay RM {cartTotal.toFixed(2)}</Text>
-        )}
-      </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.payButton, (isProcessing || cartItems.length === 0) && styles.payButtonDisabled]}
+          onPress={handlePayment}
+          disabled={isProcessing || cartItems.length === 0}
+        >
+          {isProcessing ? (
+            <View style={styles.processingRow}>
+              <ActivityIndicator color="#fff" />
+              <Text style={styles.payButtonText}>Processing…</Text>
+            </View>
+          ) : (
+            <Text style={styles.payButtonText}>Pay RM {cartTotal.toFixed(2)}</Text>
+          )}
+        </TouchableOpacity>
 
-      <Pressable style={styles.cancelButton} onPress={handleBack} disabled={isProcessing}>
-        <Text style={styles.cancelButtonText}>Cancel</Text>
-      </Pressable>
+        <Pressable style={styles.cancelButton} onPress={handleBack} disabled={isProcessing}>
+          <Text style={styles.cancelButtonText}>Cancel</Text>
+        </Pressable>
       </ScrollView>
     </SafeAreaView>
   );

@@ -63,13 +63,18 @@ export default function RootLayout() {
 
         // Check initial link (if app was closed)
         Linking.getInitialURL().then((url) => {
-            if (url) handleDeepLink({ url });
+            if (url) {
+                handleDeepLink({ url });
+            } else {
+                // If normal launch (no deep link), check biometrics
+                checkBiometricLogin();
+            }
         });
 
         // Only run the biometric check on the login screen.
-        if (pathname === '/login') {
-            checkBiometricLogin();
-        }
+        // if (pathname === '/login') {
+        //    checkBiometricLogin();
+        // }
 
         const subscription = Notifications.addNotificationResponseReceivedListener(
             (response) => {
@@ -101,33 +106,62 @@ export default function RootLayout() {
             subscription.remove();
             authListener.subscription.unsubscribe();
         };
-    }, [pathname]);
+
+    }, []);
 
     const checkBiometricLogin = async () => {
+        console.log("🔒 [Layout] Starting checkBiometricLogin...");
         const hasSession = await Biometrics.hasSavedSession();
         const isEnabled = await Biometrics.isEnabled();
+        console.log(`🔒 [Layout] hasSession: ${hasSession}, isEnabled: ${isEnabled}`);
 
         if (hasSession && isEnabled) {
+            console.log("🔒 [Layout] Prompting for biometrics...");
             const authenticated = await Biometrics.authenticate();
+            console.log(`🔒 [Layout] Authenticated: ${authenticated}`);
+
             if (authenticated) {
+                // Check if Supabase already has the session loaded (from AsyncStorage)
+                const { data: { session } } = await supabase.auth.getSession();
+                console.log(`🔒 [Layout] Current Supabase Session:`, session ? "EXISTS" : "NULL");
+
+                if (session) {
+                    // Start manually to avoid race conditions or ensure freshness? 
+                    // No, if it exists, it should be valid for now.
+                    console.log("🔒 [Layout] Session restored by persistence. Redirecting to Home.");
+                    router.replace("/home");
+                    return;
+                }
+
+                // Fallback: Try to restore using our saved refresh token
+                console.log("🔒 [Layout] No Supabase session. Attempting manual restore from SecureStore...");
                 const refreshToken = await Biometrics.getSession();
+                console.log(`🔒 [Layout] Helper refreshToken found: ${!!refreshToken}`);
+
                 if (refreshToken) {
-                    // Use refreshSession instead of setSession to explicitly rotate the token
                     const { data, error } = await supabase.auth.refreshSession({
                         refresh_token: refreshToken,
                     });
 
                     if (!error && data.session) {
+                        console.log("🔒 [Layout] Manual refresh SUCCESS. Redirecting to Home.");
                         router.replace("/home");
                     } else {
-                        console.log("Biometric session refresh failed:", error);
+                        console.error("🔒 [Layout] Manual refresh FAILED:", error);
                         router.replace("/login");
                     }
+                } else {
+                    console.log("🔒 [Layout] No refresh token in SecureStore despite hasSession=true.");
+                    router.replace("/login");
                 }
             } else {
-                // User cancelled or failed biometrics -> Go to login
+                console.log("🔒 [Layout] Biometric failed/cancelled.");
+                // User cancelled or failed
+                await supabase.auth.signOut();
                 router.replace("/login");
             }
+        } else {
+            console.log("🔒 [Layout] Biometrics not enabled or no session saved. Doing nothing.");
         }
     };
 

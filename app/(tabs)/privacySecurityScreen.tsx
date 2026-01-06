@@ -7,7 +7,7 @@ import Toast from 'react-native-toast-message';
 import QRCode from 'react-native-qrcode-svg';
 
 import { Biometrics } from "../../lib/biometrics";
-import { MFA } from "../../lib/mfa";
+// import { MFA } from "../../lib/mfa";
 import { supabase } from "../../lib/supabase";
 
 export default function PrivacySecurityScreen() {
@@ -15,7 +15,7 @@ export default function PrivacySecurityScreen() {
     const [loading, setLoading] = useState(false);
     const [settings, setSettings] = useState({
         biometricAuth: false,
-        twoFactorAuth: false,
+        // twoFactorAuth: false,
         rememberDevice: true,
         dataSharing: false,
         analyticsTracking: true,
@@ -24,14 +24,14 @@ export default function PrivacySecurityScreen() {
 
     React.useEffect(() => {
         checkBiometricStatus();
-        checkMfaStatus();
+        // checkMfaStatus();
     }, []);
 
-    // MFA State
-    const [mfaModalVisible, setMfaModalVisible] = useState(false);
-    const [enrollmentData, setEnrollmentData] = useState<any>(null);
-    const [verifyCode, setVerifyCode] = useState("");
-    const [isVerifying, setIsVerifying] = useState(false);
+    // MFA State - REMOVED
+    // const [mfaModalVisible, setMfaModalVisible] = useState(false);
+    // const [enrollmentData, setEnrollmentData] = useState<any>(null);
+    // const [verifyCode, setVerifyCode] = useState("");
+    // const [isVerifying, setIsVerifying] = useState(false);
 
     // Change Password State
     const [changePasswordVisible, setChangePasswordVisible] = useState(false);
@@ -43,14 +43,14 @@ export default function PrivacySecurityScreen() {
         setSettings(prev => ({ ...prev, biometricAuth: hasSession }));
     };
 
-    const checkMfaStatus = async () => {
-        try {
-            const factors = await MFA.getVerifiedFactors();
-            setSettings(prev => ({ ...prev, twoFactorAuth: factors.length > 0 }));
-        } catch (e) {
-            console.error("MFA check failed", e);
-        }
-    };
+    // const checkMfaStatus = async () => {
+    //     try {
+    //         const factors = await MFA.getVerifiedFactors();
+    //         setSettings(prev => ({ ...prev, twoFactorAuth: factors.length > 0 }));
+    //     } catch (e) {
+    //         console.error("MFA check failed", e);
+    //     }
+    // };
 
     const handleToggle = async (key: keyof typeof settings) => {
         if (key === 'biometricAuth') {
@@ -79,49 +79,6 @@ export default function PrivacySecurityScreen() {
                 await Biometrics.deleteSession();
                 setSettings(prev => ({ ...prev, [key]: false }));
                 Toast.show({ type: 'success', text1: 'Biometrics Disabled' });
-            }
-        } else if (key === 'twoFactorAuth') {
-            const newValue = !settings.twoFactorAuth;
-            if (newValue) {
-                // Enable MFA -> Start Enrollment
-                setLoading(true); // Ensure loading is defined or use dedicated state
-                try {
-                    const data = await MFA.enroll();
-                    setEnrollmentData(data);
-                    setMfaModalVisible(true);
-                } catch (e) {
-                    Alert.alert("Error", "Failed to start MFA enrollment: " + e.message);
-                } finally {
-                    setLoading(false);
-                }
-            } else {
-                // Disable MFA -> Unenroll
-                Alert.alert(
-                    "Disable 2FA?",
-                    "Are you sure you want to remove Two-Factor Authentication? Your account will be less secure.",
-                    [
-                        { text: "Cancel", style: "cancel" },
-                        {
-                            text: "Disable",
-                            style: "destructive",
-                            onPress: async () => {
-                                try {
-                                    setLoading(true);
-                                    const factors = await MFA.getVerifiedFactors();
-                                    for (const factor of factors) {
-                                        await MFA.unenroll(factor.id);
-                                    }
-                                    setSettings(prev => ({ ...prev, twoFactorAuth: false }));
-                                    Toast.show({ type: 'success', text1: '2FA Disabled' });
-                                } catch (e) {
-                                    Alert.alert("Error", "Failed to disable MFA: " + e.message);
-                                } finally {
-                                    setLoading(false);
-                                }
-                            }
-                        }
-                    ]
-                );
             }
         } else if (key === 'dataSharing' || key === 'analyticsTracking' || key === 'marketingEmails') {
             const isEnabling = !settings[key];
@@ -293,25 +250,9 @@ export default function PrivacySecurityScreen() {
                         </View>
                         <View style={styles.separator} />
 
-                        {/* 2FA */}
-                        <View style={styles.row}>
-                            <View style={styles.rowLeft}>
-                                <View style={styles.itemIconBox}>
-                                    <Feather name="smartphone" size={20} color="#0284c7" />
-                                </View>
-                                <View style={styles.itemInfo}>
-                                    <Text style={styles.itemTitle}>Two-Factor Authentication</Text>
-                                    <Text style={styles.itemSubtitle}>Extra security for login</Text>
-                                </View>
-                            </View>
-                            <Switch
-                                value={settings.twoFactorAuth}
-                                onValueChange={() => handleToggle('twoFactorAuth')}
-                                trackColor={{ false: "#cbd5e1", true: "#0284c7" }}
-                                thumbColor={"#fff"}
-                            />
-                        </View>
-                        <View style={styles.separator} />
+                        {/* 2FA - REMOVED */}
+                        {/* <View style={styles.row}> ... </View>
+                        <View style={styles.separator} /> */}
 
                         {/* Change Password */}
                         <View style={styles.row}>
@@ -437,81 +378,8 @@ export default function PrivacySecurityScreen() {
 
             </ScrollView>
 
-            {/* MFA Enrollment Modal */}
-            <Modal
-                visible={mfaModalVisible}
-                animationType="slide"
-                transparent={true}
-                onRequestClose={() => setMfaModalVisible(false)}
-            >
-                <View style={styles.modalContainer}>
-                    <View style={styles.modalContent}>
-                        <View style={styles.modalHeader}>
-                            <Text style={styles.modalTitle}>Setup 2-Factor Authentication</Text>
-                            <Pressable onPress={() => setMfaModalVisible(false)}>
-                                <Feather name="x" size={24} color="#64748b" />
-                            </Pressable>
-                        </View>
-
-                        <ScrollView style={{ maxHeight: 400 }}>
-                            <Text style={styles.stepText}>1. Scan this QR code with your authenticator app (e.g. Google Authenticator).</Text>
-
-                            <View style={styles.qrContainer}>
-                                {enrollmentData && (
-                                    <QRCode
-                                        value={enrollmentData.totp.uri} // Supabase returns 'uri' in the totp object
-                                        size={200}
-                                    />
-                                )}
-                            </View>
-
-                            <Text style={styles.secretText}>
-                                Or enter this code manually:
-                                {"\n"}
-                                <Text style={{ fontWeight: 'bold' }}>{enrollmentData?.totp.secret}</Text>
-                            </Text>
-
-                            <Text style={styles.stepText}>2. Enter the 6-digit code from your app to verify.</Text>
-
-                            <TextInput
-                                style={styles.input}
-                                value={verifyCode}
-                                onChangeText={setVerifyCode}
-                                placeholder="000000"
-                                keyboardType="number-pad"
-                                maxLength={6}
-                                placeholderTextColor="#94a3b8"
-                            />
-
-                            <Pressable
-                                style={[styles.verifyButton, (isVerifying || verifyCode.length !== 6) && styles.disabledButton]}
-                                onPress={async () => {
-                                    if (verifyCode.length !== 6) return;
-                                    setIsVerifying(true);
-                                    try {
-                                        await MFA.verifyCode(enrollmentData.id, verifyCode);
-                                        setMfaModalVisible(false);
-                                        setSettings(prev => ({ ...prev, twoFactorAuth: true }));
-                                        Toast.show({ type: 'success', text1: '2FA Enabled Successfully' });
-                                        setVerifyCode("");
-                                    } catch (e: any) {
-                                        Alert.alert("Error", "Invalid code. Please try again.");
-                                    } finally {
-                                        setIsVerifying(false);
-                                    }
-                                }}
-                                disabled={isVerifying || verifyCode.length !== 6}
-                            >
-                                {isVerifying ? (
-                                    <ActivityIndicator color="#fff" />
-                                ) : (
-                                    <Text style={styles.verifyButtonText}>Verify & Enable</Text>
-                                )}
-                            </Pressable>
-                        </ScrollView>
-                    </View>
-                </View>
-            </Modal>
+            {/* MFA Enrollment Modal - REMOVED */}
+            {/* <Modal ... </Modal> */}
 
             {/* Change Password Modal */}
             <Modal
