@@ -375,23 +375,16 @@ const SettingItem = ({ title, subtitle, isOn, onToggle }) => (
 // ============= REMINDER CARD COMPONENT =============
 const ReminderCard = ({
   reminder,
-  isOn,
-  onToggle,
   onEdit,
   onDelete
 }) => {
   const medicineName = reminder.medicines?.medicine_name || 'Unknown Medicine';
 
-  const handleToggle = () => {
-    const newState = !isOn;
-    onToggle(newState);
-  };
-
   return (
     <View style={styles.reminderCard}>
       <View style={styles.reminderHeader}>
         <Text style={styles.medName}>{medicineName}</Text>
-        <ToggleSwitch isOn={isOn} onToggle={handleToggle} />
+        {/* ToggleSwitch removed from here */}
       </View>
       <Text style={styles.nextDose}>
         Next: {getNextDoseText(reminder.scheduled_time)}
@@ -428,23 +421,9 @@ export default function Reminders() {
     pushNotifications: true,
     soundAlerts: true,
   });
-  const [reminderToggles, setReminderToggles] = useState({});
+
   const [notificationsInitialized, setNotificationsInitialized] = useState(false);
   const [hasScheduledInitialNotifications, setHasScheduledInitialNotifications] = useState(false);
-
-   useEffect(() => {
-     if (reminders.length === 0) return;
-
-     setReminderToggles(prev => {
-       const newToggles = { ...prev };
-       reminders.forEach(r => {
-         if (newToggles[r.reminder_id] === undefined) {
-           newToggles[r.reminder_id] = false; // default OFF
-         }
-       });
-       return newToggles;
-     });
-   }, [reminders]);
 
   // ============= NOTIFICATION INITIALIZATION =============
   const initializeNotifications = async () => {
@@ -644,9 +623,17 @@ export default function Reminders() {
         return;
       }
 
-      const validReminders = (data || []).filter(reminder =>
-        reminder !== null && reminder.medicines !== null
-      );
+      // FIX: Properly filter reminders - handle null reminder objects AND null medicines
+      const validReminders = (data || []).filter(reminder => {
+        if (!reminder) return false;
+
+        // Check if medicines join worked (could be null or {})
+        const hasMedicineInfo = reminder.medicines &&
+                              (reminder.medicines.medicine_name !== undefined ||
+                               reminder.medicines.medicine_name !== null);
+
+        return hasMedicineInfo;
+      });
 
       setReminders(validReminders);
 
@@ -663,6 +650,7 @@ export default function Reminders() {
       setLoadingReminders(false);
     }
   };
+
 
   // Get the next upcoming reminder
   const getNextReminder = () => {
@@ -817,7 +805,9 @@ export default function Reminders() {
               }
 
               // Update local state immediately instead of re-fetching
-              setReminders(prev => prev.filter(r => r.reminder_id !== reminderId));
+              setReminders(prev => prev.filter(r =>
+                r && r.reminder_id !== reminderId
+              ));
 
               Alert.alert('Success', 'Reminder deleted successfully');
 
@@ -830,6 +820,7 @@ export default function Reminders() {
       ]
     );
   };
+
 
 
   // ============= MODAL HANDLERS =============
@@ -859,15 +850,6 @@ export default function Reminders() {
   }, []);
 
   useEffect(() => {
-    const initialToggles = {};
-    reminders.forEach(r => {
-      initialToggles[r.reminder_id] = true; // default ON
-    });
-    setReminderToggles(initialToggles);
-  }, [reminders]);
-
-
-  useEffect(() => {
     const subscription = Notifications.addNotificationReceivedListener(notification => {
       console.log('Notification received:', notification.request.identifier);
     });
@@ -882,153 +864,115 @@ export default function Reminders() {
     };
   }, []);
 
-
-
-  // ============= RENDER FUNCTIONS =============
-  const renderReminders = () => {
-    if (loadingReminders) {
-      return (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="small" color="#0ea5e9" />
-          <Text style={styles.loadingText}>Loading reminders...</Text>
-        </View>
-      );
-    }
-
-    const validReminders = reminders.filter(reminder =>
-      reminder && reminder.medicines !== null && reminder.medicines !== undefined
-    );
-
-    if (validReminders.length === 0) {
-      return (
-        <View style={styles.emptyState}>
-          <Text style={styles.emptyStateText}>No reminders yet</Text>
-          <Text style={styles.emptyStateSubtext}>Add your first reminder to get started</Text>
-        </View>
-      );
-    }
-
-    return validReminders.map((reminder) => (
-      <ReminderCard
-        key={reminder.reminder_id}
-        reminder={reminder}
-        isOn={reminderToggles[reminder.reminder_id]}
-        onToggle={async (newState) => {
-          setReminderToggles(prev => ({
-            ...prev,
-            [reminder.reminder_id]: newState
-          }));
-
-          if (!newState) {
-            // Cancel ALL notifications for this reminder
-            await cancelNotification(reminder.reminder_id);
-          } else {
-            // Re-schedule daily reminder
-            await scheduleNotification(reminder);
-          }
-        }}
-        onEdit={() => openEditModal(reminder)}
-        onDelete={() => handleDeleteReminder(reminder.reminder_id)}
-      />
-    ));
-  };
-
-  const settingsConfig = [
-    {
-      title: 'Push Notifications',
-      subtitle: 'Receive alerts on your device',
-      state: settings.pushNotifications,
-      key: 'pushNotifications'
-    },
-    {
-      title: 'Sound Alerts',
-      subtitle: 'Play sound with notifications',
-      state: settings.soundAlerts,
-      key: 'soundAlerts'
-    }
-  ];
-
-  // ============= RENDER =============
-  return (
-    <SafeAreaView style={styles.safeArea}>
-      <View style={styles.container}>
-        <LinearGradient
-          style={styles.gradientBg}
-          locations={[0, 0.5, 1]}
-          colors={["#f8fafc", "rgba(239, 246, 255, 0.3)", "rgba(236, 254, 255, 0.2)"]}
-        >
-          <ScrollView
-            contentContainerStyle={styles.scrollContainer}
-            showsVerticalScrollIndicator={false}
-          >
-            {/* Header */}
-            <LinearGradient locations={[0, 0]} colors={["rgba(14, 165, 233, 0.05)", "rgba(0, 0, 0, 0)"]}>
-              <View>
-                <Text style={styles.title}>Medication Reminders</Text>
-                <Text style={{ color: "#64748B" }}>Never miss a dose with timely notifications</Text>
-                <Text> </Text>
-              </View>
-            </LinearGradient>
-
-            {/* Stats Cards */}
-            <View style={styles.rowBetween}>
-              <StatCard
-                icon={require("../../assets/bell.png")}
-                label="Active Meds"
-                value={reminders.length}
-              />
-              <StatCard
-                icon={require("../../assets/clock.png")}
-                label="Next Dose"
-                value={nextReminder ? getNextDoseText(nextReminder.scheduled_time) : 'No upcoming reminders'}
-              />
-            </View>
-
-            {/* Settings */}
-            <View style={styles.section}>
-              <View style={styles.settingsCard}>
-                {settingsConfig.map((item, index) => (
-                  <SettingItem
-                    key={index}
-                    title={item.title}
-                    subtitle={item.subtitle}
-                    isOn={item.state}
-                    onToggle={() => setSettings(prev => ({ ...prev, [item.key]: !prev[item.key] }))}
-                  />
-                ))}
-              </View>
-            </View>
-
-            {/* Reminders List */}
-            <View style={styles.meds}>
-              <View style={styles.remindersHeader}>
-                <Text style={styles.titlemeds}>Your Reminders</Text>
-                <Pressable style={styles.addButton} onPress={openCreateModal}>
-                  <Text style={styles.addButtonText}>+ Add New</Text>
-                </Pressable>
-              </View>
-
-              {renderReminders()}
-            </View>
-          </ScrollView>
-        </LinearGradient>
-
-        <View style={styles.bottomNavWrapper}>
-          <BottomNavigation />
-        </View>
-
-        <ReminderModal
-          visible={modalState.visible}
-          onClose={closeModal}
-          mode={modalState.mode}
-          initialData={modalState.data}
-          medicines={medicines}
-          loadingMedicines={loadingMedicines}
-          onSubmit={modalState.mode === 'edit' ? handleUpdateReminder : handleCreateReminder}
-        />
+// ============= RENDER FUNCTIONS =============
+const renderReminders = () => {
+  if (loadingReminders) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="small" color="#0ea5e9" />
+        <Text style={styles.loadingText}>Loading reminders...</Text>
       </View>
-    </SafeAreaView>
-  );
+    );
+  }
+
+  // FIX: Better filtering for display - ensure we have valid reminder data
+  const validReminders = reminders.filter(reminder => {
+    if (!reminder) return false;
+    if (!reminder.reminder_id) return false;
+    if (!reminder.scheduled_time) return false;
+
+    // Check if we have medicine info (either from join or can be fetched)
+    const hasMedicineInfo = reminder.medicines &&
+                           (reminder.medicines.medicine_name !== undefined);
+
+    return hasMedicineInfo;
+  });
+
+  if (validReminders.length === 0) {
+    return (
+      <View style={styles.emptyState}>
+        <Text style={styles.emptyStateText}>No reminders yet</Text>
+        <Text style={styles.emptyStateSubtext}>Add your first reminder to get started</Text>
+      </View>
+    );
+  }
+
+  return validReminders.map((reminder) => (
+    <ReminderCard
+      key={reminder.reminder_id}
+      reminder={reminder}
+      onEdit={() => openEditModal(reminder)}
+      onDelete={() => handleDeleteReminder(reminder.reminder_id)}
+    />
+  ));
+};
+
+// ============= RENDER =============
+return (
+  <SafeAreaView style={styles.safeArea}>
+    <View style={styles.container}>
+      <LinearGradient
+        style={styles.gradientBg}
+        locations={[0, 0.5, 1]}
+        colors={["#f8fafc", "rgba(239, 246, 255, 0.3)", "rgba(236, 254, 255, 0.2)"]}
+      >
+        <ScrollView
+          contentContainerStyle={styles.scrollContainer}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Header */}
+          <LinearGradient locations={[0, 0]} colors={["rgba(14, 165, 233, 0.05)", "rgba(0, 0, 0, 0)"]}>
+            <View>
+              <Text style={styles.title}>Medication Reminders</Text>
+              <Text style={{ color: "#64748B" }}>Never miss a dose with timely notifications</Text>
+              <Text> </Text>
+            </View>
+          </LinearGradient>
+
+          {/* Stats Cards */}
+          <View style={styles.rowBetween}>
+            <StatCard
+              icon={require("../../assets/bell.png")}
+              label="Active Meds"
+              value={reminders.length}
+            />
+            <StatCard
+              icon={require("../../assets/clock.png")}
+              label="Next Dose"
+              value={nextReminder ? getNextDoseText(nextReminder.scheduled_time) : 'No upcoming reminders'}
+            />
+          </View>
+
+          {/* Reminders List */}
+          <View style={styles.meds}>
+            <View style={styles.remindersHeader}>
+              <Text style={styles.titlemeds}>Your Reminders</Text>
+              <Pressable style={styles.addButton} onPress={openCreateModal}>
+                <Text style={styles.addButtonText}>+ Add New</Text>
+              </Pressable>
+            </View>
+
+            {renderReminders()}
+          </View>
+        </ScrollView>
+      </LinearGradient>
+
+      <View style={styles.bottomNavWrapper}>
+        <BottomNavigation />
+      </View>
+
+      <ReminderModal
+        visible={modalState.visible}
+        onClose={closeModal}
+        mode={modalState.mode}
+        initialData={modalState.data}
+        medicines={medicines}
+        loadingMedicines={loadingMedicines}
+        onSubmit={modalState.mode === 'edit' ? handleUpdateReminder : handleCreateReminder}
+      />
+    </View>
+  </SafeAreaView>
+);
 }
 
 // ============= STYLES =============
@@ -1088,60 +1032,7 @@ const styles = StyleSheet.create({
   section: {
     marginBottom: 20,
   },
-  settingsCard: {
-    backgroundColor: "#fff",
-    borderRadius: 16,
-    paddingHorizontal: 16,
-    shadowColor: "#000",
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
-  },
-  settingItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingVertical: 7,
-  },
-  settingText: {
-    flex: 1,
-  },
-  settingTitle: {
-    fontSize: 16,
-    marginBottom: 4,
-    color: "#0F172A",
-  },
-  settingSubtitle: {
-    fontSize: 14,
-    color: "#64748b",
-  },
-  toggleContainer: {
-    width: 50,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#e2e8f0',
-    padding: 2,
-    justifyContent: 'center',
-  },
-  toggleContainerOn: {
-    backgroundColor: '#0ea5e9',
-  },
-  toggleCircle: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: 'white',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.2,
-    shadowRadius: 1,
-    elevation: 2,
-    transform: [{ translateX: 0 }],
-  },
-  toggleCircleOn: {
-    transform: [{ translateX: 22 }],
-  },
+
   titlemeds: {
     fontSize: 18,
     fontWeight: 'bold',
