@@ -16,6 +16,7 @@ interface DisposalItem {
     reason: string;
     addedDate?: Date; // Optional as we might not have it strictly
     expiryDate?: string;
+    isDisposed?: boolean;
 }
 
 export default function DisposalListScreen() {
@@ -36,24 +37,44 @@ export default function DisposalListScreen() {
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) return;
 
-            const { data, error } = await supabase
+            // Fetch medicines
+            const { data: medicinesData, error: medicinesError } = await supabase
                 .from('medicines')
                 .select('*')
                 .eq('user_id', user.id)
                 .eq('is_disposable', true)
                 .order('medicine_name', { ascending: true });
 
-            if (error) throw error;
+            if (medicinesError) throw medicinesError;
 
-            if (data) {
-                const mappedItems: DisposalItem[] = data.map((item: any) => ({
+            // Fetch disposed logs
+            const { data: logsData, error: logsError } = await supabase
+                .from('disposal_log')
+                .select('medicine_id')
+                .eq('user_id', user.id)
+                .eq('action_type', 'DISPOSED_PHYSICALLY');
+
+            if (logsError) throw logsError;
+
+            const disposedIds = new Set(logsData?.map((log: any) => log.medicine_id));
+
+            if (medicinesData) {
+                const mappedItems: DisposalItem[] = medicinesData.map((item: any) => ({
                     id: item.medicine_id,
                     name: item.medicine_name,
                     dosage: item.dosage,
                     reason: item.disposal_reason || 'Unknown',
                     expiryDate: item.expiry_date,
-                    addedDate: item.expiry_date ? new Date(item.expiry_date) : new Date() // Fallback
+                    addedDate: item.expiry_date ? new Date(item.expiry_date) : new Date(), // Fallback
+                    isDisposed: disposedIds.has(item.medicine_id)
                 }));
+
+                // Sort: Undisposed first, then Disposed
+                mappedItems.sort((a, b) => {
+                    if (a.isDisposed === b.isDisposed) return 0;
+                    return a.isDisposed ? 1 : -1;
+                });
+
                 setDisposalList(mappedItems);
             }
         } catch (error) {
@@ -162,9 +183,17 @@ export default function DisposalListScreen() {
                             </Pressable>
                             <View>
                                 <Text style={styles.title}>Disposal List</Text>
-                                <Text style={styles.subtitle}>
-                                    {disposalList.length} {disposalList.length === 1 ? 'item' : 'items'} pending disposal
-                                </Text>
+                                {(() => {
+                                    const pendingCount = disposalList.filter(i => !i.isDisposed).length;
+                                    return (
+                                        <Text style={styles.subtitle}>
+                                            {pendingCount > 0
+                                                ? `${pendingCount} ${pendingCount === 1 ? 'item' : 'items'} pending disposal`
+                                                : "No pending disposals"
+                                            }
+                                        </Text>
+                                    );
+                                })()}
                             </View>
                         </View>
 
@@ -195,25 +224,33 @@ export default function DisposalListScreen() {
                         ) : (
                             <View style={styles.listContainer}>
                                 {disposalList.map((item) => (
-                                    <View key={item.id} style={styles.card}>
+                                    <View key={item.id} style={[styles.card, item.isDisposed && styles.cardDisposed]}>
                                         <LinearGradient
-                                            colors={['rgba(254, 242, 242, 0.5)', 'rgba(255, 237, 213, 0.3)']}
+                                            colors={item.isDisposed
+                                                ? ['#e2e8f0', '#cbd5e1']
+                                                : ['rgba(254, 242, 242, 0.5)', 'rgba(255, 237, 213, 0.3)']}
                                             style={styles.cardGradient}
                                         >
                                             <View style={styles.cardContent}>
                                                 <View style={styles.cardHeader}>
                                                     <View>
-                                                        <Text style={styles.medName}>{item.name}</Text>
+                                                        <Text style={[styles.medName, item.isDisposed && styles.textDisposed]}>
+                                                            {item.name}
+                                                        </Text>
                                                         <Text style={styles.medDosage}>{item.dosage}</Text>
                                                     </View>
                                                     <LinearGradient
-                                                        colors={getReasonColor(item.reason) as any}
+                                                        colors={item.isDisposed
+                                                            ? ["#64748b", "#475569"]
+                                                            : getReasonColor(item.reason) as any}
                                                         start={{ x: 0, y: 0 }}
                                                         end={{ x: 1, y: 0 }}
                                                         style={styles.badge}
                                                     >
-                                                        <Feather name="alert-triangle" size={10} color="white" style={{ marginRight: 4 }} />
-                                                        <Text style={styles.badgeText}>{item.reason}</Text>
+                                                        <Feather name={item.isDisposed ? "check" : "alert-triangle"} size={10} color="white" style={{ marginRight: 4 }} />
+                                                        <Text style={styles.badgeText}>
+                                                            {item.isDisposed ? "DISPOSED" : item.reason}
+                                                        </Text>
                                                     </LinearGradient>
                                                 </View>
 
@@ -223,8 +260,9 @@ export default function DisposalListScreen() {
 
                                                 <View style={styles.actionRow}>
                                                     <Pressable
-                                                        style={styles.primaryButton}
-                                                        onPress={() => router.push({ pathname: "/disposalScreen", params: { id: item.id } })}
+                                                        style={[styles.primaryButton, item.isDisposed && styles.hiddenButton]}
+                                                        onPress={() => !item.isDisposed && router.push({ pathname: "/disposalScreen", params: { id: item.id } })}
+                                                        disabled={item.isDisposed}
                                                     >
                                                         <LinearGradient
                                                             colors={['#0ea5e9', '#2563eb']}
@@ -237,9 +275,21 @@ export default function DisposalListScreen() {
                                                         </LinearGradient>
                                                     </Pressable>
 
-                                                    <Pressable style={styles.outlineButton} onPress={() => handleRemove(item.id, item.reason)}>
+                                                    <Pressable
+                                                        style={[styles.outlineButton, item.isDisposed && styles.hiddenButton]}
+                                                        onPress={() => handleRemove(item.id, item.reason)}
+                                                        disabled={item.isDisposed}
+                                                    >
                                                         <Text style={styles.outlineButtonText}>Remove</Text>
                                                     </Pressable>
+
+                                                    {item.isDisposed && (
+                                                        <View style={{ flex: 1, alignItems: 'center', padding: 8 }}>
+                                                            <Text style={{ color: '#64748b', fontStyle: 'italic', fontSize: 13 }}>
+                                                                Physical disposal recorded
+                                                            </Text>
+                                                        </View>
+                                                    )}
                                                 </View>
                                             </View>
                                         </LinearGradient>
@@ -471,4 +521,16 @@ const styles = StyleSheet.create({
         lineHeight: 18,
         marginLeft: 24,
     },
+    cardDisposed: {
+        opacity: 0.8,
+        backgroundColor: '#f1f5f9',
+        borderColor: '#cbd5e1'
+    },
+    textDisposed: {
+        textDecorationLine: 'line-through',
+        color: '#64748b'
+    },
+    hiddenButton: {
+        display: 'none'
+    }
 });
