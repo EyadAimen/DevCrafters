@@ -432,6 +432,20 @@ export default function Reminders() {
   const [notificationsInitialized, setNotificationsInitialized] = useState(false);
   const [hasScheduledInitialNotifications, setHasScheduledInitialNotifications] = useState(false);
 
+   useEffect(() => {
+     if (reminders.length === 0) return;
+
+     setReminderToggles(prev => {
+       const newToggles = { ...prev };
+       reminders.forEach(r => {
+         if (newToggles[r.reminder_id] === undefined) {
+           newToggles[r.reminder_id] = false; // default OFF
+         }
+       });
+       return newToggles;
+     });
+   }, [reminders]);
+
   // ============= NOTIFICATION INITIALIZATION =============
   const initializeNotifications = async () => {
     // Request permissions
@@ -837,7 +851,7 @@ export default function Reminders() {
       const initialized = await initializeNotifications();
       setNotificationsInitialized(initialized);
       if (initialized) {
-        await fetchReminders(true); // Allow scheduling after initialization
+        await fetchReminders(false); // Allow scheduling after initialization
       }
     };
 
@@ -845,28 +859,13 @@ export default function Reminders() {
   }, []);
 
   useEffect(() => {
-    let isMounted = true;
+    const initialToggles = {};
+    reminders.forEach(r => {
+      initialToggles[r.reminder_id] = true; // default ON
+    });
+    setReminderToggles(initialToggles);
+  }, [reminders]);
 
-    const scheduleIfNeeded = async () => {
-      if (!isMounted) return;
-
-      if (reminders.length > 0 &&
-          notificationsInitialized &&
-          !loadingReminders &&
-          !hasScheduledInitialNotifications) {
-
-        console.log('Scheduling notifications for', reminders.length, 'reminders');
-        await scheduleAllNotifications(reminders);
-        setHasScheduledInitialNotifications(true);
-      }
-    };
-
-    scheduleIfNeeded();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [reminders, notificationsInitialized, loadingReminders, hasScheduledInitialNotifications]);
 
   useEffect(() => {
     const subscription = Notifications.addNotificationReceivedListener(notification => {
@@ -913,7 +912,7 @@ export default function Reminders() {
       <ReminderCard
         key={reminder.reminder_id}
         reminder={reminder}
-        isOn={reminderToggles[reminder.reminder_id] !== false}
+        isOn={reminderToggles[reminder.reminder_id]}
         onToggle={async (newState) => {
           setReminderToggles(prev => ({
             ...prev,
