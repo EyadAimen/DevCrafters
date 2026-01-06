@@ -66,7 +66,7 @@ export default function MedicineInventory() {
     { label: "All Categories", value: "all" },
     { label: "Low Stock", value: "low_stock" },
     { label: "Pain Relief", value: "Pain Relief" },
-    { label: "Antibiotics", value: "Antibiotics" },
+    { label: "Antibiotics", value: "Antibiotic" },
     { label: "Diabetes", value: "Diabetes" },
     { label: "Antihistamine", value: "Antihistamine" },
     { label: "Gastrointestinal", value: "Gastrointestinal" },
@@ -235,8 +235,10 @@ export default function MedicineInventory() {
         // Filter for low stock items
         filtered = filtered.filter((item) => item.isLowStock);
       } else {
-        // Filter by regular category
-        filtered = filtered.filter((item) => item.category === category);
+        // Filter by regular category - CASE INSENSITIVE
+        filtered = filtered.filter(
+          (item) => item.category.toLowerCase() === category.toLowerCase()
+        );
       }
     }
 
