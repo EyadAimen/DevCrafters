@@ -21,7 +21,6 @@ import * as Notifications from 'expo-notifications';
 
 // ============= CONSTANTS =============
 const FREQUENCIES = ['Once Daily', 'Twice Daily', 'Thrice Daily'];
-const SNOOZE_DURATION_MINUTES = 15;
 
 // ============= NOTIFICATION CONFIG =============
 Notifications.setNotificationHandler({
@@ -379,8 +378,7 @@ const ReminderCard = ({
   isOn,
   onToggle,
   onEdit,
-  onDelete,
-  onSnooze
+  onDelete
 }) => {
   const medicineName = reminder.medicines?.medicine_name || 'Unknown Medicine';
 
@@ -429,7 +427,6 @@ export default function Reminders() {
   const [settings, setSettings] = useState({
     pushNotifications: true,
     soundAlerts: true,
-    snoozeOption: true,
   });
   const [reminderToggles, setReminderToggles] = useState({});
   const [notificationsInitialized, setNotificationsInitialized] = useState(false);
@@ -585,43 +582,6 @@ export default function Reminders() {
       console.log(`Scheduled ${scheduledCount} new notifications. Total reminders: ${remindersList.length}`);
     } catch (error) {
       console.error('Error in scheduleAllNotifications:', error);
-    }
-  };
-
-  const handleSnooze = async (reminderId) => {
-    if (!settings.snoozeOption) return;
-
-    const reminder = reminders.find(r => r.reminder_id === reminderId);
-    if (!reminder) return;
-
-    const medicineName =
-      reminder.medicines?.medicine_name ||
-      reminder.medicine_name ||
-      'your medication';
-
-    try {
-      const snoozeId = `snooze_${reminderId}_${Date.now()}`;
-
-      await Notifications.scheduleNotificationAsync({
-        identifier: snoozeId,
-        content: {
-          title: "Medication Reminder (Snoozed)",
-          body: `Time to take ${medicineName}`,
-          sound: settings.soundAlerts ? "default" : null,
-          android: {
-            channelId: "medication-reminders",
-          },
-        },
-        trigger: {
-          type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
-          seconds: SNOOZE_DURATION_MINUTES * 60,
-          repeats: false,
-        },
-      });
-
-      console.log(`Snoozed reminder for ${SNOOZE_DURATION_MINUTES} minutes`);
-    } catch (error) {
-      console.error("Error snoozing notification:", error);
     }
   };
 
@@ -970,7 +930,6 @@ export default function Reminders() {
         }}
         onEdit={() => openEditModal(reminder)}
         onDelete={() => handleDeleteReminder(reminder.reminder_id)}
-        onSnooze={() => handleSnooze(reminder.reminder_id)}
       />
     ));
   };
@@ -987,12 +946,6 @@ export default function Reminders() {
       subtitle: 'Play sound with notifications',
       state: settings.soundAlerts,
       key: 'soundAlerts'
-    },
-    {
-      title: 'Snooze Option',
-      subtitle: 'Allow 15-minute snooze',
-      state: settings.snoozeOption,
-      key: 'snoozeOption'
     }
   ];
 
