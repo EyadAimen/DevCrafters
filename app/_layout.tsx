@@ -15,6 +15,7 @@ export default function RootLayout() {
     const pathname = usePathname();
 
     useEffect(() => {
+        console.log("🔒 [Layout] RootLayout Mounted. initializing...");
         // Handle Deep Links (Password Reset)
         const handleDeepLink = async (event) => {
             const url = event.url;
@@ -62,14 +63,15 @@ export default function RootLayout() {
         const linkingSubscription = Linking.addEventListener("url", handleDeepLink);
 
         // Check initial link (if app was closed)
+        // Check initial link (if app was closed)
         Linking.getInitialURL().then((url) => {
             if (url) {
                 handleDeepLink({ url });
-            } else {
-                // If normal launch (no deep link), check biometrics
-                checkBiometricLogin();
             }
-        });
+        }).catch(err => console.error("Linking Error:", err));
+
+        // Always check biometrics on mount (gatekeeper)
+        checkBiometricLogin();
 
         // Only run the biometric check on the login screen.
         // if (pathname === '/login') {
@@ -161,7 +163,18 @@ export default function RootLayout() {
                 router.replace("/login");
             }
         } else {
-            console.log("🔒 [Layout] Biometrics not enabled or no session saved. Doing nothing.");
+            console.log("🔒 [Layout] Biometrics NOT enabled or NO saved biometric session.");
+
+            // Check if we have a lingering Supabase session (due to persistSession: true)
+            const { data: { session } } = await supabase.auth.getSession();
+
+            if (session) {
+                console.log("🔒 [Layout] Found lingering session but biometrics disabled/missing. Forcing logout for security.");
+                await supabase.auth.signOut();
+                router.replace("/login");
+            } else {
+                console.log("🔒 [Layout] Clean state. No session found.");
+            }
         }
     };
 
