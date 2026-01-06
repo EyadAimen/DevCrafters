@@ -657,7 +657,7 @@ const MedicalReports = () => {
       // Now show the save options dialog
       Alert.alert(
         "Save Medical Report",
-        "Choose how you'd like to save or share this report:",
+        "Medical report is saved successfully.",
         [
           {
             text: "Cancel",
@@ -665,7 +665,7 @@ const MedicalReports = () => {
             onPress: () => setDownloading(null)
           },
           {
-            text: "Save to Device",
+            text: "Confirm",
             onPress: async () => {
               try {
                 // Request media library permission
@@ -713,16 +713,16 @@ const MedicalReports = () => {
               }
             }
           },
-          {
-            text: "Email as Attachment",
-            onPress: () => {
-              const emailUrl = `mailto:?subject=Medical Report&body=Attached is your medical report.&attachment=${localUri}`;
-              Linking.openURL(emailUrl).catch(err => {
-                Alert.alert("Error", "Could not open email client.");
-              });
-              setDownloading(null);
-            }
-          }
+          // {
+          //   text: "Email as Attachment",
+          //   onPress: () => {
+          //     const emailUrl = `mailto:?subject=Medical Report&body=Attached is your medical report.&attachment=${localUri}`;
+          //     Linking.openURL(emailUrl).catch(err => {
+          //       Alert.alert("Error", "Could not open email client.");
+          //     });
+          //     setDownloading(null);
+          //   }
+          // }
         ]
       );
 
