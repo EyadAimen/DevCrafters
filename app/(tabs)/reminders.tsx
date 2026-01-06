@@ -351,39 +351,6 @@ const ReminderModal = ({
   );
 };
 
-const logMissedIntake = async (reminderId, medicineName, scheduledTime) => {
-  try {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-
-    // Avoid duplicates: check if already logged
-    const { data: existing } = await supabase
-      .from('missed_intake')
-      .select('*')
-      .eq('reminder_id', reminderId)
-      .eq('user_id', user.id)
-      .eq('scheduled_time', scheduledTime)
-      .limit(1);
-
-    if (existing?.length > 0) return;
-
-    // Insert missed intake
-    const { data, error } = await supabase
-      .from('missed_intake')
-      .insert({
-        user_id: user.id,
-        reminder_id: reminderId,
-        medicine_name: medicineName,
-        scheduled_time: scheduledTime,
-      });
-
-    if (error) console.error('Error logging missed intake:', error);
-    else console.log('Missed intake logged:', data);
-  } catch (error) {
-    console.error('Error in logMissedIntake:', error);
-  }
-};
-
 // ============= STAT CARD COMPONENT =============
 const StatCard = ({ icon, label, value }) => (
   <Pressable style={styles.smallCard}>
@@ -420,9 +387,6 @@ const ReminderCard = ({
   const handleToggle = () => {
     const newState = !isOn;
     onToggle(newState);
-    if (!newState) {
-      onSnooze();
-    }
   };
 
   return (
@@ -630,28 +594,34 @@ export default function Reminders() {
     const reminder = reminders.find(r => r.reminder_id === reminderId);
     if (!reminder) return;
 
-    const medicineName = reminder.medicines?.medicine_name || reminder.medicine_name || 'your medication';
-    const snoozeTime = new Date(Date.now() + SNOOZE_DURATION_MINUTES * 60 * 1000);
+    const medicineName =
+      reminder.medicines?.medicine_name ||
+      reminder.medicine_name ||
+      'your medication';
 
     try {
       const snoozeId = `snooze_${reminderId}_${Date.now()}`;
 
       await Notifications.scheduleNotificationAsync({
+        identifier: snoozeId,
         content: {
-          title: "Medication Reminder - Snoozed",
+          title: "Medication Reminder (Snoozed)",
           body: `Time to take ${medicineName}`,
-          sound: settings.soundAlerts ? 'default' : null,
+          sound: settings.soundAlerts ? "default" : null,
+          android: {
+            channelId: "medication-reminders",
+          },
         },
         trigger: {
-          date: snoozeTime,
+          type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+          seconds: SNOOZE_DURATION_MINUTES * 60,
           repeats: false,
         },
-        identifier: snoozeId,
       });
 
       console.log(`Snoozed reminder for ${SNOOZE_DURATION_MINUTES} minutes`);
     } catch (error) {
-      console.error('Error snoozing notification:', error);
+      console.error("Error snoozing notification:", error);
     }
   };
 
@@ -939,34 +909,19 @@ export default function Reminders() {
   }, [reminders, notificationsInitialized, loadingReminders, hasScheduledInitialNotifications]);
 
   useEffect(() => {
-    const receivedListener = Notifications.addNotificationReceivedListener(notification => {
-      const { reminderId, medicineName, scheduledTime } = notification.request.content.data;
-
+    const subscription = Notifications.addNotificationReceivedListener(notification => {
       console.log('Notification received:', notification.request.identifier);
-
-      // Start 1-minute timer for auto-missed
-      setTimeout(() => {
-        // Only log if user did NOT toggle the reminder to "taken"
-        if (!reminderToggles[reminderId]) {
-          logMissedIntake(reminderId, medicineName, scheduledTime);
-        }
-      }, 60000); // 1 minute
     });
 
-    const responseListener = Notifications.addNotificationResponseReceivedListener(response => {
-      const { reminderId } = response.notification.request.content.data;
-      console.log('Notification response (user tapped):', response.notification.request.identifier);
-
-      // Mark the reminder as taken to prevent auto-missed
-      setReminderToggles(prev => ({ ...prev, [reminderId]: true }));
+    const responseSubscription = Notifications.addNotificationResponseReceivedListener(response => {
+      console.log('Notification response:', response.notification.request.identifier);
     });
 
     return () => {
-      receivedListener.remove();
-      responseListener.remove();
+      subscription.remove();
+      responseSubscription.remove();
     };
-  }, [reminderToggles]);
-
+  }, []);
 
 
 
@@ -999,10 +954,20 @@ export default function Reminders() {
         key={reminder.reminder_id}
         reminder={reminder}
         isOn={reminderToggles[reminder.reminder_id] !== false}
-        onToggle={(newState) => setReminderToggles(prev => ({
-          ...prev,
-          [reminder.reminder_id]: newState
-        }))}
+        onToggle={async (newState) => {
+          setReminderToggles(prev => ({
+            ...prev,
+            [reminder.reminder_id]: newState
+          }));
+
+          if (!newState) {
+            // Cancel ALL notifications for this reminder
+            await cancelNotification(reminder.reminder_id);
+          } else {
+            // Re-schedule daily reminder
+            await scheduleNotification(reminder);
+          }
+        }}
         onEdit={() => openEditModal(reminder)}
         onDelete={() => handleDeleteReminder(reminder.reminder_id)}
         onSnooze={() => handleSnooze(reminder.reminder_id)}
