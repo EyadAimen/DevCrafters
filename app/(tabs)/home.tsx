@@ -121,6 +121,7 @@ export default function Home() {
         .from("medicines")
         .select("*")
         .eq("user_id", user.id)
+        .neq("is_disposable", true) // Exclude disposed medicines
         .order("medicine_name", { ascending: true });
 
       if (medicinesError || !medicinesData) {

@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { View, Text, StyleSheet, Pressable, ScrollView, Linking } from "react-native";
+import { View, Text, StyleSheet, Pressable, ScrollView, Linking, Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter, useLocalSearchParams } from "expo-router";
@@ -39,9 +39,30 @@ export default function DisposalScreen() {
         }
     };
 
-    const handleMarkAsDisposed = () => {
-        setIsMarkedAsDisposed(true);
-        // TODO: Implement physical disposal logging if required
+    const handleMarkAsDisposed = async () => {
+        try {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) {
+                Alert.alert("Error", "User not authentication");
+                return;
+            }
+
+            const { error } = await supabase.from('disposal_log').insert({
+                medicine_id: params.id,
+                user_id: user.id,
+                action_type: 'DISPOSED_PHYSICALLY',
+                can_revert: false,
+                action_timestamp: new Date().toISOString()
+            });
+
+            if (error) throw error;
+
+            setIsMarkedAsDisposed(true);
+            Alert.alert("Success", "Medicine marked as disposed");
+        } catch (error) {
+            console.error("Error marking as disposed:", error);
+            Alert.alert("Error", "Failed to mark as disposed");
+        }
     };
 
     const basicSteps = [

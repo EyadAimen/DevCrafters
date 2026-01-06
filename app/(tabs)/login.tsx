@@ -15,17 +15,18 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { supabase } from "../../lib/supabase";
 import { Biometrics } from "../../lib/biometrics";
-import { MFA } from "../../lib/mfa";
+// import { MFA } from "../../lib/mfa";
 import { Modal, ActivityIndicator } from "react-native";
 import { Feather } from '@expo/vector-icons';
 
 export default function Login() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
-  const [mfaModalVisible, setMfaModalVisible] = useState(false);
-  const [mfaFactorId, setMfaFactorId] = useState("");
-  const [verifyCode, setVerifyCode] = useState("");
-  const [isVerifying, setIsVerifying] = useState(false);
+  // MFA State - REMOVED
+  // const [mfaModalVisible, setMfaModalVisible] = useState(false);
+  // const [mfaFactorId, setMfaFactorId] = useState("");
+  // const [verifyCode, setVerifyCode] = useState("");
+  // const [isVerifying, setIsVerifying] = useState(false);
 
   const [formData, setFormData] = useState({
     email: "",
@@ -131,20 +132,23 @@ export default function Login() {
       if (error) {
         showToast("Invalid email or password", "error");
       } else {
-        // MFA CHECK
+        // MFA CHECK - REMOVED
+        /*
         const verifiedFactors = await MFA.getVerifiedFactors();
         if (verifiedFactors.length > 0) {
           setMfaFactorId(verifiedFactors[0].id); // Just use the first one for MVP
           setMfaModalVisible(true);
           return;
         }
+        */
 
         handleLoginSuccess(data.session);
       }
     } catch (error) {
       showToast("Something went wrong", "error");
     } finally {
-      if (!mfaModalVisible) setLoading(false);
+      // if (!mfaModalVisible) 
+      setLoading(false);
     }
   };
 
@@ -289,74 +293,8 @@ export default function Login() {
         </View>
       )}
 
-      {/* MFA Verification Modal */}
-      <Modal
-        visible={mfaModalVisible}
-        animationType="fade"
-        transparent={true}
-        onRequestClose={() => { }} // Disallow closing without verification? Or allow to fallback to login
-      >
-        <View style={styles.modalBg}>
-          <View style={styles.modalContent}>
-            <View style={styles.iconCircle}>
-              <Feather name="shield" size={32} color="#0284c7" />
-            </View>
-            <Text style={styles.modalTitle}>Two-Factor Authentication</Text>
-            <Text style={styles.modalSubtitle}>Enter the 6-digit code from your authenticator app</Text>
-
-            <TextInput
-              style={styles.codeInput}
-              value={verifyCode}
-              onChangeText={setVerifyCode}
-              placeholder="000000"
-              keyboardType="number-pad"
-              maxLength={6}
-              placeholderTextColor="#94a3b8"
-              autoFocus
-            />
-
-            <Pressable
-              style={[styles.verifyButton, (isVerifying || verifyCode.length !== 6) && styles.disabledButton]}
-              onPress={async () => {
-                if (verifyCode.length !== 6) return;
-                setIsVerifying(true);
-                try {
-                  const result = await MFA.verifyCode(mfaFactorId, verifyCode);
-                  // MFA.verifyCode throws on error, so if we get here, we are good.
-                  // result is the session data object { session, user }
-
-                  setMfaModalVisible(false);
-                  handleLoginSuccess(result.session);
-                } catch (e: any) {
-                  console.log("MFA Error:", e);
-                  showToast(e.message || "Invalid code", "error");
-                } finally {
-                  setIsVerifying(false);
-                  setVerifyCode(""); // Clear on failure or success
-                }
-              }}
-              disabled={isVerifying || verifyCode.length !== 6}
-            >
-              {isVerifying ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.verifyButtonText}>Verify</Text>
-              )}
-            </Pressable>
-
-            <Pressable
-              style={styles.cancelLink}
-              onPress={() => {
-                setMfaModalVisible(false);
-                setLoading(false);
-                supabase.auth.signOut(); // Cancel login
-              }}
-            >
-              <Text style={styles.cancelLinkText}>Cancel & Sign Out</Text>
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
+      {/* MFA Verification Modal - REMOVED */}
+      {/* <Modal ... </Modal> */}
     </SafeAreaView>
   );
 }
