@@ -90,8 +90,8 @@ const AfterAnalysingMedicine = () => {
 
   // Extract medicine name from params and fetch data
   React.useEffect(() => {
-    // Get medicine name from navigation params or use a default
-    const medicineName = params.medicineName as string || "Lisinopril";
+    // Get medicine name from navigation params
+    const medicineName = params.medicineName as string || null;
     setExtractedMedicineName(medicineName);
     
     if (medicineName) {
@@ -344,10 +344,10 @@ const AfterAnalysingMedicine = () => {
             ) : (
               <View style={styles.noDataContainer}>
                 <Text style={styles.noDataText}>
-                  No detailed information found for this medicine in our database.
+                  Unidentified or no detailed information found for this medicine in our database.
                 </Text>
                 <Text style={styles.noDataSubtext}>
-                  The medicine was identified but detailed information is not available.
+                  Medicine information unavailable.
                 </Text>
               </View>
             )}

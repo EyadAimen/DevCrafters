@@ -8,7 +8,7 @@ export default function CreateNewPasswordScreen() {
 
   useEffect(() => {
     console.log('🔄 CreateNewPassword screen opened with params:', params);
-    console.log('🔗 Full URL params:', window.location.href);
+    console.log('🔄 CreateNewPassword screen opened with params:', params);
   }, [params]);
 
   return <CreateNewPassword />;

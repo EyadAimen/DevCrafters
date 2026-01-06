@@ -21,7 +21,6 @@ import * as Notifications from 'expo-notifications';
 
 // ============= CONSTANTS =============
 const FREQUENCIES = ['Once Daily', 'Twice Daily', 'Thrice Daily'];
-const SNOOZE_DURATION_MINUTES = 15;
 
 // ============= NOTIFICATION CONFIG =============
 Notifications.setNotificationHandler({
@@ -379,17 +378,13 @@ const ReminderCard = ({
   isOn,
   onToggle,
   onEdit,
-  onDelete,
-  onSnooze
+  onDelete
 }) => {
   const medicineName = reminder.medicines?.medicine_name || 'Unknown Medicine';
 
   const handleToggle = () => {
     const newState = !isOn;
     onToggle(newState);
-    if (!newState) {
-      onSnooze();
-    }
   };
 
   return (
@@ -432,11 +427,24 @@ export default function Reminders() {
   const [settings, setSettings] = useState({
     pushNotifications: true,
     soundAlerts: true,
-    snoozeOption: true,
   });
   const [reminderToggles, setReminderToggles] = useState({});
   const [notificationsInitialized, setNotificationsInitialized] = useState(false);
   const [hasScheduledInitialNotifications, setHasScheduledInitialNotifications] = useState(false);
+
+   useEffect(() => {
+     if (reminders.length === 0) return;
+
+     setReminderToggles(prev => {
+       const newToggles = { ...prev };
+       reminders.forEach(r => {
+         if (newToggles[r.reminder_id] === undefined) {
+           newToggles[r.reminder_id] = false; // default OFF
+         }
+       });
+       return newToggles;
+     });
+   }, [reminders]);
 
   // ============= NOTIFICATION INITIALIZATION =============
   const initializeNotifications = async () => {
@@ -588,37 +596,6 @@ export default function Reminders() {
       console.log(`Scheduled ${scheduledCount} new notifications. Total reminders: ${remindersList.length}`);
     } catch (error) {
       console.error('Error in scheduleAllNotifications:', error);
-    }
-  };
-
-  const handleSnooze = async (reminderId) => {
-    if (!settings.snoozeOption) return;
-
-    const reminder = reminders.find(r => r.reminder_id === reminderId);
-    if (!reminder) return;
-
-    const medicineName = reminder.medicines?.medicine_name || reminder.medicine_name || 'your medication';
-    const snoozeTime = new Date(Date.now() + SNOOZE_DURATION_MINUTES * 60 * 1000);
-
-    try {
-      const snoozeId = `snooze_${reminderId}_${Date.now()}`;
-
-      await Notifications.scheduleNotificationAsync({
-        content: {
-          title: "Medication Reminder - Snoozed",
-          body: `Time to take ${medicineName}`,
-          sound: settings.soundAlerts ? 'default' : null,
-        },
-        trigger: {
-          date: snoozeTime,
-          repeats: false,
-        },
-        identifier: snoozeId,
-      });
-
-      console.log(`Snoozed reminder for ${SNOOZE_DURATION_MINUTES} minutes`);
-    } catch (error) {
-      console.error('Error snoozing notification:', error);
     }
   };
 
@@ -874,7 +851,7 @@ export default function Reminders() {
       const initialized = await initializeNotifications();
       setNotificationsInitialized(initialized);
       if (initialized) {
-        await fetchReminders(true); // Allow scheduling after initialization
+        await fetchReminders(false); // Allow scheduling after initialization
       }
     };
 
@@ -882,28 +859,13 @@ export default function Reminders() {
   }, []);
 
   useEffect(() => {
-    let isMounted = true;
+    const initialToggles = {};
+    reminders.forEach(r => {
+      initialToggles[r.reminder_id] = true; // default ON
+    });
+    setReminderToggles(initialToggles);
+  }, [reminders]);
 
-    const scheduleIfNeeded = async () => {
-      if (!isMounted) return;
-
-      if (reminders.length > 0 &&
-          notificationsInitialized &&
-          !loadingReminders &&
-          !hasScheduledInitialNotifications) {
-
-        console.log('Scheduling notifications for', reminders.length, 'reminders');
-        await scheduleAllNotifications(reminders);
-        setHasScheduledInitialNotifications(true);
-      }
-    };
-
-    scheduleIfNeeded();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [reminders, notificationsInitialized, loadingReminders, hasScheduledInitialNotifications]);
 
   useEffect(() => {
     const subscription = Notifications.addNotificationReceivedListener(notification => {
@@ -950,14 +912,23 @@ export default function Reminders() {
       <ReminderCard
         key={reminder.reminder_id}
         reminder={reminder}
-        isOn={reminderToggles[reminder.reminder_id] !== false}
-        onToggle={(newState) => setReminderToggles(prev => ({
-          ...prev,
-          [reminder.reminder_id]: newState
-        }))}
+        isOn={reminderToggles[reminder.reminder_id]}
+        onToggle={async (newState) => {
+          setReminderToggles(prev => ({
+            ...prev,
+            [reminder.reminder_id]: newState
+          }));
+
+          if (!newState) {
+            // Cancel ALL notifications for this reminder
+            await cancelNotification(reminder.reminder_id);
+          } else {
+            // Re-schedule daily reminder
+            await scheduleNotification(reminder);
+          }
+        }}
         onEdit={() => openEditModal(reminder)}
         onDelete={() => handleDeleteReminder(reminder.reminder_id)}
-        onSnooze={() => handleSnooze(reminder.reminder_id)}
       />
     ));
   };
@@ -974,12 +945,6 @@ export default function Reminders() {
       subtitle: 'Play sound with notifications',
       state: settings.soundAlerts,
       key: 'soundAlerts'
-    },
-    {
-      title: 'Snooze Option',
-      subtitle: 'Allow 15-minute snooze',
-      state: settings.snoozeOption,
-      key: 'snoozeOption'
     }
   ];
 
