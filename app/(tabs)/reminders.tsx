@@ -211,11 +211,34 @@ const ReminderModal = ({
 
   const handleFrequencySelect = (frequency) => {
     const timeSlots = getFrequencyTimeSlots(frequency);
-    const newTimes = Array.from({ length: timeSlots }, (_, i) => {
-      const time = new Date();
-      time.setHours(time.getHours() + i);
-      return time;
-    });
+
+    // Define sensible default times based on frequency
+    let newTimes;
+
+    if (frequency === 'Once Daily') {
+      newTimes = [new Date()]; // Default to current time
+    } else if (frequency === 'Twice Daily') {
+      // Common schedule: Morning (8 AM) and Evening (8 PM)
+      newTimes = [
+        new Date(new Date().setHours(8, 0, 0, 0)),  // 8:00 AM
+        new Date(new Date().setHours(20, 0, 0, 0)), // 8:00 PM
+      ];
+    } else if (frequency === 'Thrice Daily') {
+      // Common schedule: Morning, Afternoon, Evening
+      newTimes = [
+        new Date(new Date().setHours(8, 0, 0, 0)),   // 8:00 AM
+        new Date(new Date().setHours(14, 0, 0, 0)),  // 2:00 PM
+        new Date(new Date().setHours(20, 0, 0, 0)),  // 8:00 PM
+      ];
+    } else {
+      // Fallback: evenly spaced throughout the day
+      const interval = 24 / timeSlots;
+      newTimes = Array.from({ length: timeSlots }, (_, i) => {
+        const time = new Date();
+        time.setHours(Math.floor(interval * i), 0, 0, 0);
+        return time;
+      });
+    }
 
     updateFormState({
       selectedFrequency: frequency,
@@ -224,7 +247,6 @@ const ReminderModal = ({
       showFrequencyDropdown: false,
     });
   };
-
   const handleMedicineSelect = (medicine) => {
     updateFormState({
       selectedMedicine: medicine.medicine_name,
@@ -585,7 +607,9 @@ export default function Reminders() {
       const { data, error } = await supabase
         .from('medicines')
         .select('medicine_id, medicine_name')
+        .eq('is_disposable', false)  // Use .eq() for boolean filter
         .order('medicine_name');
+
       if (!error) setMedicines(data || []);
     } catch (error) {
       console.error('Error fetching medicines:', error);
@@ -687,8 +711,6 @@ export default function Reminders() {
   };
 
   const nextReminder = getNextReminder();
-
-
 
   // ============= CRUD OPERATIONS =============
   const handleCreateReminder = async ({ selectedMedicineId, selectedFrequency, selectedTimes }) => {
