@@ -144,8 +144,16 @@ const HelpSupport = () => {
 
   const faqItems = [
     {
+      question: "How do I access the app's features?",
+      answer: "Navigate through the tabs at the bottom of the screen to access different features like Home, Meds, Scan, Analytics, and Profile. You can also access other features through Home through Quick Actions."
+    },
+    {
+      question: "How do I add active medicine?",
+      answer: "Go to Meds tab > + Add Medicine then add the medicine manually."
+    },
+    {
       question: "How do I scan my medication?",
-      answer: "Use the camera feature in the app to scan your medication label. Make sure you have good lighting and hold your phone steady."
+      answer: "Use the camera feature in the app to scan your medication label. Make sure you have good lighting and hold your phone steady. You will then receive medication information once successfully scanned."
     },
     {
       question: "How do I set up medication reminders?",
@@ -153,11 +161,7 @@ const HelpSupport = () => {
     },
     {
       question: "Can I order refills through the app?",
-      answer: "Yes, you can request prescription refills directly through the app. We'll contact your pharmacy on your behalf."
-    },
-    {
-      question: "How do I add a payment method?",
-      answer: "Go to Profile > Payment Methods > Add New. We accept credit/debit cards and digital wallets."
+      answer: "Yes, you can request prescription refills directly through the app under Meds and click on the medicine you would like to request refill. We'll contact your pharmacy on your behalf."
     },
     {
       question: "Is my medical data secure?",
@@ -170,7 +174,15 @@ const HelpSupport = () => {
     {
       question: "How do I find nearby pharmacies?",
       answer: "Use the \"Find Pharmacies\" in the app, which shows pharmacies near you with hours, contact info, and directions."
-    }
+    },
+    {
+      question: "Where do I check order history?",
+      answer: "Under the Profile tab, go to Order History to view past orders."
+    },
+    {
+      question: "What if I have further questions?",
+      answer: "Use the in-app chatbot for further assistance."
+    },
     // add more FAQs as needed
   ];
 
@@ -340,85 +352,6 @@ const HelpSupport = () => {
                 )}
               </Pressable>
             ))}
-          </View>
-
-          {/* Support Ticket Section */}
-          <View style={styles.section}>
-            <View style={styles.ticketCard}>
-              <View style={styles.ticketHeader}>
-                <Ionicons name="document-text" size={20} color="#0ea5e9" />
-                <Text style={styles.sectionTitle}>Submit Support Ticket</Text>
-              </View>
-              
-              <View style={styles.ticketForm}>
-                <View style={styles.inputContainer}>
-                  <Text style={styles.inputLabel}>Subject *</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="What is your issue about?"
-                    placeholderTextColor="#94a3b8"
-                    value={subject}
-                    onChangeText={setSubject}
-                    editable={!isSubmitting}
-                    maxLength={100}
-                  />
-                  <Text style={styles.charCounter}>
-                    {subject.length}/100 characters
-                  </Text>
-                </View>
-                
-                <View style={styles.inputContainer}>
-                  <Text style={styles.inputLabel}>Description *</Text>
-                  <TextInput
-                    style={[styles.input, styles.textArea]}
-                    placeholder="Please describe your issue or question in detail..."
-                    placeholderTextColor="#94a3b8"
-                    value={description}
-                    onChangeText={setDescription}
-                    editable={!isSubmitting}
-                    multiline
-                    numberOfLines={6}
-                    textAlignVertical="top"
-                    maxLength={1000}
-                  />
-                  <Text style={styles.charCounter}>
-                    {description.length}/1000 characters (Minimum 10)
-                  </Text>
-                </View>
-                
-                <View style={styles.submitInfo}>
-                  <Ionicons name="information-circle" size={16} color="#64748b" />
-                  <Text style={styles.submitInfoText}>
-                    We'll respond to your ticket within 24 hours
-                  </Text>
-                </View>
-                
-                <LinearGradient
-                  colors={['#0ea5e9', '#0284c7']}
-                  style={[styles.submitButton, isSubmitting && styles.submitButtonDisabled]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                >
-                  <Pressable 
-                    onPress={handleSubmitTicket} 
-                    disabled={isSubmitting}
-                    style={styles.submitButtonPressable}
-                  >
-                    {isSubmitting ? (
-                      <View style={styles.submittingContainer}>
-                        <Ionicons name="time" size={20} color="#fff" />
-                        <Text style={styles.submitButtonText}>Submitting...</Text>
-                      </View>
-                    ) : (
-                      <View style={styles.submitButtonContent}>
-                        <Ionicons name="paper-plane" size={20} color="#fff" />
-                        <Text style={styles.submitButtonText}>Submit Ticket</Text>
-                      </View>
-                    )}
-                  </Pressable>
-                </LinearGradient>
-              </View>
-            </View>
           </View>
 
           {/* Emergency Notice */}
