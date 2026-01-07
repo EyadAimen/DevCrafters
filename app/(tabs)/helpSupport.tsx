@@ -175,6 +175,7 @@ const HelpSupport = () => {
   ];
 
   const supportMethods = [
+    /*
     {
       title: "Live Chat",
       description: "Chat with our support team",
@@ -182,6 +183,7 @@ const HelpSupport = () => {
       icon: "chatbubbles" as const,
       onPress: () => Alert.alert("Live Chat", "This feature will open a chat window. Coming soon!")
     },
+    */
     {
       title: "Email Support",
       description: "support@pillora.my",
@@ -202,6 +204,7 @@ const HelpSupport = () => {
         );
       }
     },
+    /*
     {
       title: "Phone Support",
       description: "+60 00-000 0000",
@@ -225,8 +228,10 @@ const HelpSupport = () => {
         );
       }
     }
+    */
   ];
 
+  /*
   const helpResources = [
     {
       title: "User Guide",
@@ -253,6 +258,7 @@ const HelpSupport = () => {
       onPress: () => Alert.alert("Report a Problem", "Opening bug report form...")
     }
   ];
+  */
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -383,7 +389,7 @@ const HelpSupport = () => {
                 <View style={styles.submitInfo}>
                   <Ionicons name="information-circle" size={16} color="#64748b" />
                   <Text style={styles.submitInfoText}>
-                    We'll respond to your ticket within 24 hours at {userEmail || "your registered email"}
+                    We'll respond to your ticket within 24 hours
                   </Text>
                 </View>
                 
@@ -415,30 +421,6 @@ const HelpSupport = () => {
             </View>
           </View>
 
-          {/* Help Resources */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Help Resources</Text>
-            
-            <View style={styles.resourcesGrid}>
-              {helpResources.map((resource, index) => (
-                <Pressable 
-                  key={index} 
-                  style={styles.resourceCard} 
-                  onPress={resource.onPress}
-                  disabled={isSubmitting}
-                >
-                  <View style={styles.resourceContent}>
-                    <View style={styles.resourceIconContainer}>
-                      <Ionicons name={resource.icon} size={24} color="#0ea5e9" />
-                    </View>
-                    <Text style={styles.resourceTitle}>{resource.title}</Text>
-                    <Text style={styles.resourceDescription}>{resource.description}</Text>
-                  </View>
-                </Pressable>
-              ))}
-            </View>
-          </View>
-
           {/* Emergency Notice */}
           <View style={styles.emergencyCard}>
             <View style={styles.emergencyHeader}>
@@ -452,7 +434,7 @@ const HelpSupport = () => {
 
           {/* Footer */}
           <View style={styles.footer}>
-            <Text style={styles.footerText}>Pillora Support Team • Available 24/7</Text>
+            <Text style={styles.footerText}>Pillora Support Team</Text>
           </View>
         </ScrollView>
       </LinearGradient>

@@ -1145,7 +1145,7 @@ const calculateTotalMissedDoses = (firstDoseDate: Date | null, allIntakeData: an
                  selectedPeriod === 'month' ? 'Weekly' :
                  selectedPeriod === 'quarter' ? 'Monthly' :
                  selectedPeriod === 'year' ? 'Quarterly' :
-                 'Lifetime'} Adherence Rate
+                 'Recent'} Adherence Rate
               </Text>
             </View>
             <View style={styles.chartWrapper}>
