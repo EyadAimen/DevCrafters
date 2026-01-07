@@ -73,7 +73,7 @@ interface TrendData {
   currentAdherence: number;
 }
 
-const App1 = () => {
+const Analytics = () => {
   const [selectedPeriod, setSelectedPeriod] = useState<PeriodType>('lifetime');  // Default to 'lifetime'
   const [selectedTab, setSelectedTab] = useState<TabType>('adherence');
   const [analyticsData, setAnalyticsData] = useState<AnalyticsData>({
@@ -319,15 +319,17 @@ const App1 = () => {
     // Return empty data points based on period
     switch (period) {
       case 'lifetime': 
-        // For lifetime, show monthly data if more than 30 days, otherwise weekly
-        const daysDiff = Math.ceil((periodEnd.getTime() - periodStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-        if (daysDiff > 30) {
-          const months = Math.ceil(daysDiff / 30);
-          return Array(Math.min(months, 12)).fill(0); // Max 12 months
-        } else {
-          const weeks = Math.ceil(daysDiff / 7);
-          return Array(Math.min(weeks, 8)).fill(0); // Max 8 weeks
+        // For lifetime, show daily data if less than 7 days, otherwise weekly
+        if (firstDoseDate) {
+          const daysDiff = Math.ceil((periodEnd.getTime() - periodStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+          if (daysDiff <= 7) {
+            return Array(Math.min(daysDiff, 7)).fill(0); // Daily for up to 7 days
+          } else {
+            const weeks = Math.ceil(daysDiff / 7);
+            return Array(Math.min(weeks, 8)).fill(0); // Weekly for more than 7 days
+          }
         }
+        return Array(7).fill(0);
       case 'week': return Array(7).fill(0);
       case 'month': return Array(4).fill(0);
       case 'quarter': return Array(3).fill(0);
@@ -345,16 +347,19 @@ const App1 = () => {
     
     switch (period) {
       case 'lifetime':
-        // For lifetime, group by month if more than 30 days, otherwise by week
-        const daysDiff = Math.ceil((periodEnd.getTime() - periodStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-        if (daysDiff > 30) {
-          // Group by month
-          const monthName = intakeTime.toLocaleString('default', { month: 'short', year: 'numeric' });
-          unitKey = monthName;
+        // For lifetime, show daily data if less than 7 days since first dose, otherwise weekly
+        if (firstDoseDate) {
+          const daysDiff = Math.ceil((periodEnd.getTime() - periodStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+          if (daysDiff <= 7) {
+            // Group by day
+            unitKey = intakeTime.toDateString();
+          } else {
+            // Group by week
+            const weekNumber = Math.floor((intakeTime.getTime() - periodStart.getTime()) / (7 * 24 * 60 * 60 * 1000));
+            unitKey = `Week ${weekNumber + 1}`;
+          }
         } else {
-          // Group by week
-          const weekNumber = Math.floor((intakeTime.getTime() - periodStart.getTime()) / (7 * 24 * 60 * 60 * 1000));
-          unitKey = `Week ${weekNumber + 1}`;
+          unitKey = intakeTime.toDateString();
         }
         break;
       case 'week':
@@ -385,27 +390,44 @@ const App1 = () => {
   // Calculate adherence per time unit
   switch (period) {
     case 'lifetime':
-      const daysDiff = Math.ceil((periodEnd.getTime() - periodStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-      if (daysDiff > 30) {
-        // Show monthly data
-        const months = Math.ceil(daysDiff / 30);
-        for (let month = 0; month < months; month++) {
-          const monthDate = new Date(periodStart);
-          monthDate.setMonth(periodStart.getMonth() + month);
-          const monthKey = monthDate.toLocaleString('default', { month: 'short', year: 'numeric' });
-          const dosesTaken = intakeByUnit.get(monthKey) || 0;
-          const daysInMonth = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0).getDate();
-          const adherence = allMedicines.length > 0 ? Math.round((dosesTaken / (allMedicines.length * daysInMonth)) * 100) : 0;
-          dataPoints.push(adherence);
-          if (dataPoints.length >= 12) break; // Limit to 12 months
+      if (firstDoseDate) {
+        const daysDiff = Math.ceil((periodEnd.getTime() - periodStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+        
+        if (daysDiff <= 7) {
+          // Show daily data
+          for (let i = 0; i < daysDiff; i++) {
+            const date = new Date(periodStart);
+            date.setDate(periodStart.getDate() + i);
+            if (date > periodEnd) break;
+            
+            const dateKey = date.toDateString();
+            const dosesTaken = intakeByUnit.get(dateKey) || 0;
+            const adherence = allMedicines.length > 0 ? Math.round((dosesTaken / allMedicines.length) * 100) : 0;
+            dataPoints.push(adherence);
+          }
+          // Fill remaining days with 0 if needed
+          while (dataPoints.length < Math.min(daysDiff, 7)) {
+            dataPoints.push(0);
+          }
+        } else {
+          // Show weekly data
+          const weeks = Math.ceil(daysDiff / 7);
+          for (let week = 0; week < weeks; week++) {
+            const weekKey = `Week ${week + 1}`;
+            const dosesTaken = intakeByUnit.get(weekKey) || 0;
+            const adherence = allMedicines.length > 0 ? Math.round((dosesTaken / (allMedicines.length * 7)) * 100) : 0;
+            dataPoints.push(adherence);
+            if (dataPoints.length >= 8) break; // Limit to 8 weeks
+          }
         }
       } else {
-        // Show weekly data
-        const weeks = Math.ceil(daysDiff / 7);
-        for (let week = 0; week < weeks; week++) {
-          const weekKey = `Week ${week + 1}`;
-          const dosesTaken = intakeByUnit.get(weekKey) || 0;
-          const adherence = allMedicines.length > 0 ? Math.round((dosesTaken / (allMedicines.length * 7)) * 100) : 0;
+        // Fallback: show last 7 days
+        for (let i = 0; i < 7; i++) {
+          const date = new Date(periodStart);
+          date.setDate(periodStart.getDate() + i);
+          const dateKey = date.toDateString();
+          const dosesTaken = intakeByUnit.get(dateKey) || 0;
+          const adherence = allMedicines.length > 0 ? Math.round((dosesTaken / allMedicines.length) * 100) : 0;
           dataPoints.push(adherence);
         }
       }
@@ -796,27 +818,53 @@ const calculateTotalMissedDoses = (firstDoseDate: Date | null, allIntakeData: an
   };
 
   const getPeriodDataLabels = (period: PeriodType) => {
-    switch (period) {
-      case 'week':
-        return ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-      case 'month':
-        return ['W1', 'W2', 'W3', 'W4'];
-      case 'quarter':
+  switch (period) {
+    case 'lifetime':
+      if (firstDoseDate) {
         const now = new Date();
-        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-        const labels = [];
-        for (let i = 2; i >= 0; i--) {
-          const month = new Date(now);
-          month.setMonth(now.getMonth() - i);
-          labels.push(monthNames[month.getMonth()]);
+        const daysDiff = Math.ceil((now.getTime() - firstDoseDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+        
+        if (daysDiff <= 7) {
+          // Show day names for up to 7 days
+          const labels = [];
+          const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+          for (let i = 0; i < Math.min(daysDiff, 7); i++) {
+            const date = new Date(firstDoseDate);
+            date.setDate(firstDoseDate.getDate() + i);
+            labels.push(dayNames[date.getDay()]);
+          }
+          return labels;
+        } else {
+          // Show week numbers for more than 7 days
+          const weeks = Math.ceil(daysDiff / 7);
+          const labels = [];
+          for (let i = 1; i <= Math.min(weeks, 8); i++) {
+            labels.push(`W${i}`);
+          }
+          return labels;
         }
-        return labels;
-      case 'year':
-        return ['Q1', 'Q2', 'Q3', 'Q4'];
-      default:
-        return ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    }
-  };
+      }
+      return ['Overall'];
+    case 'week':
+      return ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    case 'month':
+      return ['W1', 'W2', 'W3', 'W4'];
+    case 'quarter':
+      const now = new Date();
+      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const labels = [];
+      for (let i = 2; i >= 0; i--) {
+        const month = new Date(now);
+        month.setMonth(now.getMonth() - i);
+        labels.push(monthNames[month.getMonth()]);
+      }
+      return labels;
+    case 'year':
+      return ['Q1', 'Q2', 'Q3', 'Q4'];
+    default:
+      return ['Overall'];
+  }
+};
 
   const renderPieChart = (data: Array<{name: string, doses: number, percentage: number, color: string}>) => {
   if (data.length === 0) {
@@ -929,39 +977,45 @@ const calculateTotalMissedDoses = (firstDoseDate: Date | null, allIntakeData: an
 };
 
   const renderAdherenceChart = (data: number[], period: PeriodType) => {
-    const labels = getPeriodDataLabels(period);
-    
-    if (data.length === 0) {
-      return (
-        <View style={styles.barChartContainer}>
-          <Text style={styles.noDataText}>No adherence data available</Text>
-        </View>
-      );
-    }
-
+  const labels = getPeriodDataLabels(period);
+  
+  if (data.length === 0) {
     return (
       <View style={styles.barChartContainer}>
-        {data.map((value, index) => {
-          const label = labels[index] || '';
-
-          return (
-            <View key={`bar-${index}`} style={styles.barContainer}>
-              <View style={styles.barWrapper}>
-                <View
-                  style={[
-                    styles.bar,
-                    { height: Math.max(20, (value / 100) * 200) }
-                  ]}
-                />
-              </View>
-              <Text style={styles.barLabel}>{label}</Text>
-              <Text style={styles.barValue}>{value}%</Text>
-            </View>
-          );
-        })}
+        <Text style={styles.noDataText}>No adherence data available</Text>
       </View>
     );
-  };
+  }
+
+  // Calculate bar width based on number of data points
+  const barWidth = Math.max(20, (Dimensions.get('window').width - 40) / Math.max(data.length, 5) - 10);
+
+  return (
+    <View style={styles.barChartContainer}>
+      {data.map((value, index) => {
+        const label = labels[index] || '';
+
+        return (
+          <View key={`bar-${index}`} style={[styles.barContainer, { width: barWidth }]}>
+            <View style={styles.barWrapper}>
+              <View
+                style={[
+                  styles.bar,
+                  { 
+                    height: Math.max(20, (value / 100) * 200),
+                    width: barWidth - 10
+                  }
+                ]}
+              />
+            </View>
+            <Text style={styles.barLabel}>{label}</Text>
+            <Text style={styles.barValue}>{value}%</Text>
+          </View>
+        );
+      })}
+    </View>
+  );
+};
 
  const renderTrendsChart = () => {
   const dataPoints = analyticsData.dailyData;
@@ -1126,30 +1180,34 @@ const calculateTotalMissedDoses = (firstDoseDate: Date | null, allIntakeData: an
 };
 
   const renderTabContent = () => {
-    if (loading) {
-      return (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#0ea5e9" />
-          <Text style={styles.loadingText}>Loading analytics data...</Text>
-        </View>
-      );
-    }
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#0ea5e9" />
+        <Text style={styles.loadingText}>Loading analytics data...</Text>
+      </View>
+    );
+  }
 
-    switch (selectedTab) {
-      case 'adherence':
-        return (
-          <View style={styles.adherenceContainer}>
-            <View style={[styles.heading3, styles.analyticsscreenLayout]}>
-              <Text style={[styles.dailyAdherenceRate, styles.adherenceTypo]}>
-                {selectedPeriod === 'week' ? 'Daily' :
-                 selectedPeriod === 'month' ? 'Weekly' :
-                 selectedPeriod === 'quarter' ? 'Monthly' :
-                 selectedPeriod === 'year' ? 'Quarterly' :
-                 'Lifetime'} Adherence Rate
-              </Text>
-            </View>
-            <View style={styles.chartWrapper}>
-              {renderAdherenceChart(analyticsData.dailyData, selectedPeriod)}
+  switch (selectedTab) {
+    case 'adherence':
+      // Determine if we should show daily or weekly for lifetime
+      const isLifetimeDaily = selectedPeriod === 'lifetime' && firstDoseDate && 
+        Math.ceil((new Date().getTime() - firstDoseDate.getTime()) / (1000 * 60 * 60 * 24)) + 1 <= 7;
+      
+      return (
+        <View style={styles.adherenceContainer}>
+          <View style={[styles.heading3, styles.analyticsscreenLayout]}>
+            <Text style={[styles.dailyAdherenceRate, styles.adherenceTypo]}>
+              {selectedPeriod === 'week' ? 'Daily' :
+               selectedPeriod === 'month' ? 'Weekly' :
+               selectedPeriod === 'quarter' ? 'Monthly' :
+               selectedPeriod === 'year' ? 'Quarterly' :
+               isLifetimeDaily ? 'Daily' : 'Weekly'} Adherence Rate
+            </Text>
+          </View>
+          <View style={styles.chartWrapper}>
+            {renderAdherenceChart(analyticsData.dailyData, selectedPeriod)}
             </View>
 
             <View style={styles.medicationBreakdownContainer}>
@@ -1849,11 +1907,12 @@ const styles = StyleSheet.create({
     alignItems: "flex-end",
     paddingVertical: 20,
     height: 250,
-    paddingHorizontal: 10
+    paddingHorizontal: 10,
+    flexWrap: 'nowrap'
   },
   barContainer: {
     alignItems: "center",
-    width: 35
+    flexShrink: 1
   },
   barWrapper: {
     height: 200,
@@ -1861,7 +1920,6 @@ const styles = StyleSheet.create({
     alignItems: "center"
   },
   bar: {
-    width: 20,
     backgroundColor: "#0ea5e9",
     borderRadius: 4,
     minHeight: 10
@@ -2353,4 +2411,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default App1;
+export default Analytics;
