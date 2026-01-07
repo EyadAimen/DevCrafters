@@ -210,9 +210,7 @@ export default function Home() {
                   <Text style={styles.smallLabel}>Active Meds</Text>
                   <Text style={styles.smallValue}>{loading ? "..." : medicines.length}</Text>
                 </View>
-              </Pressable>
-
-              
+              </Pressable>    
             </View>
 
             {/* Quick Actions */}
