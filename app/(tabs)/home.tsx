@@ -212,13 +212,7 @@ export default function Home() {
                 </View>
               </Pressable>
 
-              <Pressable style={styles.smallCard}>
-                <View style={styles.smallCardContent}>
-                  <Image source={require("../../assets/arrowIconBlue.png")} style={styles.smallIcon} />
-                  <Text style={styles.smallLabel}>Adherence</Text>
-                  <Text style={styles.smallValue}>94%</Text>
-                </View>
-              </Pressable>
+              
             </View>
 
             {/* Quick Actions */}
