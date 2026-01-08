@@ -344,17 +344,17 @@ const extractMedicineInfo = useCallback((ocrText: string): MedicineInfo => {
       if (medicineInfo.name && medicineInfo.dosage) {
         Alert.alert(
           "Analysis Complete", 
-          `Medicine identified: ${medicineInfo.name}\nDosage: ${medicineInfo.dosage}\n\nFull label text has been extracted and saved.`
+          `Medicine identified: ${medicineInfo.name}\nDosage: ${medicineInfo.dosage}`
         );
       } else if (medicineInfo.name) {
         Alert.alert(
           "Analysis Complete", 
-          `Medicine identified: ${medicineInfo.name}\n\nDosage information not found in the label. Full label text has been extracted and saved.`
+          `Medicine identified: ${medicineInfo.name}\n\nDosage information not found or identified in the label.`
         );
       } else if (medicineInfo.dosage) {
         Alert.alert(
           "Analysis Complete", 
-          `Dosage identified: ${medicineInfo.dosage}\n\nMedicine name not clearly identified. Full label text has been extracted and saved.`
+          `Dosage identified: ${medicineInfo.dosage}\n\nMedicine name not clearly identified.`
         );
       } else {
         Alert.alert(

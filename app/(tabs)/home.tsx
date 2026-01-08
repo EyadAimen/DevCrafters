@@ -210,15 +210,7 @@ export default function Home() {
                   <Text style={styles.smallLabel}>Active Meds</Text>
                   <Text style={styles.smallValue}>{loading ? "..." : medicines.length}</Text>
                 </View>
-              </Pressable>
-
-              <Pressable style={styles.smallCard}>
-                <View style={styles.smallCardContent}>
-                  <Image source={require("../../assets/arrowIconBlue.png")} style={styles.smallIcon} />
-                  <Text style={styles.smallLabel}>Adherence</Text>
-                  <Text style={styles.smallValue}>94%</Text>
-                </View>
-              </Pressable>
+              </Pressable>    
             </View>
 
             {/* Quick Actions */}
