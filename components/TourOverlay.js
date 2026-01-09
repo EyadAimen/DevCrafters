@@ -53,7 +53,7 @@ const TourOverlay = () => {
             id: 'active_meds',
             title: 'Active Medications',
             description: 'Track your current medicines',
-            position: { x: 100, y: 200 },
+            position: { x: 180, y: 200 },
         },
         {
             id: 'scan_medicine',
