@@ -730,23 +730,6 @@ export default function PharmacyLocator() {
               <Image source={nearestIcon} style={styles.expandedIconGrey} resizeMode="contain" />
               <Text style={styles.expandedTextGrey}>{pharmacy.address}</Text>
             </View>
-            <TouchableOpacity
-              style={styles.orderButton}
-              activeOpacity={0.9}
-              onPress={() =>
-                router.push({
-                  pathname: "/newOrderScreen",
-                  params: {
-                    pharmacyId: pharmacy.id,
-                    pharmacyName: pharmacy.name,
-                    pharmacyAddress: pharmacy.address
-                  }
-                })
-              }
-            >
-              <Text style={styles.orderButtonText}>New Order</Text>
-              <Image source={forwardIcon} style={styles.forwardIcon} resizeMode="contain" />
-            </TouchableOpacity>
           </View>
         )}
       </TouchableOpacity>
