@@ -166,6 +166,8 @@ const Analytics = () => {
   }
 
   const now = new Date();
+  now.setHours(23, 59, 59, 999); 
+  
   let periodStart: Date;
   let daysInPeriod: number;
 
@@ -215,10 +217,12 @@ const Analytics = () => {
       // Fallback if no first dose date
       switch (period) {
         case 'week':
+          daysInPeriod = 7;
           periodStart = new Date(now);
           periodStart.setDate(now.getDate() - 6);
-          daysInPeriod = 7;
-          break;
+          // Reset time to beginning of the day
+          periodStart.setHours(0, 0, 0, 0);
+        break;
         case 'month':
           periodStart = new Date(now);
           periodStart.setDate(now.getDate() - 29);
@@ -243,10 +247,10 @@ const Analytics = () => {
   }
 
   // Filter intake data for the period
-  const periodIntake = intakeData.filter(item => {
-    const intakeTime = new Date(item.intake_time);
-    return intakeTime >= periodStart && intakeTime <= now;
-  });
+const periodIntake = intakeData.filter(item => {
+  const intakeTime = new Date(item.intake_time);
+  return intakeTime >= periodStart && intakeTime <= now;
+});
 
   // Get all medicines taken DURING the period (not from entire history)
   const periodMedicines = [...new Set(periodIntake.map(item => item.medicine_name))];
@@ -478,21 +482,32 @@ const Analytics = () => {
       break;
       
     case 'week':
-      for (let i = 0; i < 7; i++) {
-        const date = new Date(periodStart);
-        date.setDate(periodStart.getDate() + i);
-        if (date > periodEnd) break;
-        
-        const dateKey = date.toDateString();
-        const dosesTaken = intakeByUnit.get(dateKey) || 0;
-        const adherence = allMedicines.length > 0 ? Math.round((dosesTaken / allMedicines.length) * 100) : 0;
-        dataPoints.push(adherence);
-      }
-      // Fill remaining days with 0 if needed
-      while (dataPoints.length < 7) {
-        dataPoints.push(0);
-      }
-      break;
+  // Calculate daily adherence for each of the last 7 days
+  const weekDays = Array(7).fill(0);
+  
+  // For each intake, check which day it belongs to
+  intakeData.forEach(item => {
+    const intakeTime = new Date(item.intake_time);
+    
+    // Reset times to beginning of day for accurate comparison
+    const intakeDate = new Date(intakeTime.getFullYear(), intakeTime.getMonth(), intakeTime.getDate());
+    const periodStartDate = new Date(periodStart.getFullYear(), periodStart.getMonth(), periodStart.getDate());
+    
+    // Calculate difference in days
+    const diffTime = intakeDate.getTime() - periodStartDate.getTime();
+    const dayIndex = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+    
+    if (dayIndex >= 0 && dayIndex < 7) {
+      weekDays[dayIndex]++;
+    }
+  });
+  
+  // Calculate adherence percentage for each day
+  for (let i = 0; i < 7; i++) {
+    const adherence = allMedicines.length > 0 ? Math.round((weekDays[i] / allMedicines.length) * 100) : 0;
+    dataPoints.push(adherence);
+  }
+  break;
       
     case 'month':
       for (let week = 0; week < 4; week++) {
@@ -881,13 +896,12 @@ const calculateTotalMissedDoses = (firstDoseDate: Date | null, allIntakeData: an
         const daysDiff = Math.ceil((now.getTime() - firstDoseDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
         
         if (daysDiff <= 7) {
-          // Show day names for up to 7 days
+          // Show day names for up to 7 days (based on actual dates)
           const labels = [];
-          const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
           for (let i = 0; i < Math.min(daysDiff, 7); i++) {
             const date = new Date(firstDoseDate);
             date.setDate(firstDoseDate.getDate() + i);
-            labels.push(dayNames[date.getDay()]);
+            labels.push(date.toLocaleDateString('en-US', { weekday: 'short' }));
           }
           return labels;
         } else {
@@ -901,22 +915,38 @@ const calculateTotalMissedDoses = (firstDoseDate: Date | null, allIntakeData: an
         }
       }
       return ['Overall'];
+      
     case 'week':
-      return ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+      // Show day names for the current week (today and previous 6 days)
+      const labels = [];
+      const today = new Date();
+      
+      for (let i = 6; i >= 0; i--) {
+        const date = new Date(today);
+        date.setDate(today.getDate() - i);
+        labels.push(date.toLocaleDateString('en-US', { weekday: 'short' }));
+      }
+      return labels;
+      
     case 'month':
       return ['W1', 'W2', 'W3', 'W4'];
+      
     case 'quarter':
       const now = new Date();
       const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-      const labels = [];
+      const quarterLabels = [];
+      
+      // For quarter, show current month and previous 2 months
       for (let i = 2; i >= 0; i--) {
         const month = new Date(now);
         month.setMonth(now.getMonth() - i);
-        labels.push(monthNames[month.getMonth()]);
+        quarterLabels.push(monthNames[month.getMonth()]);
       }
-      return labels;
+      return quarterLabels;
+      
     case 'year':
       return ['Q1', 'Q2', 'Q3', 'Q4'];
+      
     default:
       return ['Overall'];
   }
