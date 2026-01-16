@@ -1,11 +1,13 @@
 import React from "react";
 import { View, Text, Image, Pressable, StyleSheet, useWindowDimensions } from "react-native";
 import { useRouter, usePathname } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const BottomNavigation = () => {
   const router = useRouter();
   const pathname = usePathname(); // 👈 Get current route path
   const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets(); // Get safe area insets
 
   // Function to check if a route is active
   const isActive = (route) => {
@@ -13,7 +15,7 @@ const BottomNavigation = () => {
   };
 
   return (
-    <View style={[styles.bottomnavigation, { width }]}>
+    <View style={[styles.bottomnavigation, { width, paddingBottom: insets.bottom }]}>
       <View style={styles.container}>
         {/* Home */}
         <Pressable 

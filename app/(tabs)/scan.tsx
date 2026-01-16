@@ -78,11 +78,11 @@ const ScanPackage = () => {
   const analyzeImageWithOCR = useCallback(async (imageUri: string, base64Data?: string): Promise<OCRResult> => {
     try {
       setIsAnalyzing(true);
-      
+
       let base64String = base64Data;
       if (!base64String) {
-        base64String = await FileSystem.readAsStringAsync(imageUri, { 
-          encoding: FileSystem.EncodingType.Base64 
+        base64String = await FileSystem.readAsStringAsync(imageUri, {
+          encoding: FileSystem.EncodingType.Base64
         });
       }
 
@@ -118,7 +118,7 @@ const ScanPackage = () => {
         const extractedText = result.ParsedResults[0].ParsedText;
         console.log("✅ OCR Analysis Successful");
         console.log("📝 Extracted Text:", extractedText.substring(0, 200) + "...");
-        
+
         return {
           success: true,
           text: extractedText
@@ -149,7 +149,7 @@ const ScanPackage = () => {
     }
 
     console.log("🔍 Analyzing OCR text for medicine information...");
-    
+
     const text = ocrText.toLowerCase();
     let name: string | null = null;
     let dosage: string | null = null;
@@ -200,7 +200,7 @@ const ScanPackage = () => {
           'pharmaceuticals', 'healthcare', 'medical', 'prescription'
         ]);
 
-        const potentialNames = capitalizedWords.filter(word => 
+        const potentialNames = capitalizedWords.filter(word =>
           word.split(' ').length <= 3 &&
           !commonNonMedicine.has(word.toLowerCase()) &&
           word.length > 3
@@ -307,10 +307,10 @@ const ScanPackage = () => {
       // Step 3: Upload image to Supabase Storage
       const fileName = `${user.id}-${Date.now()}.jpg`;
       console.log("⬆️ Uploading to medicine-images bucket...");
-      
+
       const { data: uploadData, error: uploadError } = await uploadImageToSupabase(
-        photoUri, 
-        fileName, 
+        photoUri,
+        fileName,
         base64Data
       );
 
@@ -325,7 +325,7 @@ const ScanPackage = () => {
       const { data: { publicUrl } } = supabase.storage
         .from('medicine-images')
         .getPublicUrl(fileName);
-      
+
       console.log("🌐 Public URL:", publicUrl);
 
       // Step 4: Save everything to database
@@ -353,7 +353,7 @@ const ScanPackage = () => {
       if (ocrResult.success) {
         if (medicineInfo.name && medicineInfo.dosage) {
           Alert.alert(
-            "Analysis Complete", 
+            "Analysis Complete",
             `Medicine identified: ${medicineInfo.name}\nDosage: ${medicineInfo.dosage}`,
             [
               {
@@ -361,7 +361,7 @@ const ScanPackage = () => {
                 onPress: () => {
                   router.push({
                     pathname: "/AfterAnalysingMedicine",
-                    params: { 
+                    params: {
                       medicineName: medicineInfo.name,
                       medicineDosage: medicineInfo.dosage,
                       imageUrl: publicUrl
@@ -373,7 +373,7 @@ const ScanPackage = () => {
           );
         } else if (medicineInfo.name) {
           Alert.alert(
-            "Analysis Complete", 
+            "Analysis Complete",
             `Medicine identified: ${medicineInfo.name}\n\nDosage information not found in the label.`,
             [
               {
@@ -381,7 +381,7 @@ const ScanPackage = () => {
                 onPress: () => {
                   router.push({
                     pathname: "/AfterAnalysingMedicine",
-                    params: { 
+                    params: {
                       medicineName: medicineInfo.name,
                       imageUrl: publicUrl
                     }
@@ -392,7 +392,7 @@ const ScanPackage = () => {
           );
         } else if (medicineInfo.dosage) {
           Alert.alert(
-            "Analysis Complete", 
+            "Analysis Complete",
             `Dosage identified: ${medicineInfo.dosage}\n\nMedicine name not clearly identified.`,
             [
               {
@@ -400,7 +400,7 @@ const ScanPackage = () => {
                 onPress: () => {
                   router.push({
                     pathname: "/AfterAnalysingMedicine",
-                    params: { 
+                    params: {
                       medicineDosage: medicineInfo.dosage,
                       imageUrl: publicUrl
                     }
@@ -411,7 +411,7 @@ const ScanPackage = () => {
           );
         } else {
           Alert.alert(
-            "Analysis Complete", 
+            "Analysis Complete",
             "Medicine package scanned successfully! Text extracted but specific medicine name and dosage couldn't be identified automatically.",
             [
               {
@@ -429,7 +429,7 @@ const ScanPackage = () => {
       } else {
         console.log("⚠️ Photo uploaded but OCR analysis failed:", ocrResult.error);
         Alert.alert(
-          "Upload Complete", 
+          "Upload Complete",
           "Photo saved but we couldn't read text from the image. Please ensure the package label is clear and try again.",
           [
             {
@@ -446,7 +446,7 @@ const ScanPackage = () => {
       }
 
       console.log("✅ SUCCESS! Image uploaded, analyzed, and saved!");
-      
+
     } catch (error) {
       console.error("💥 Unexpected error:", error);
       Alert.alert("Error", "Something went wrong. Please try again.");
@@ -492,7 +492,7 @@ const ScanPackage = () => {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
+    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
       <View style={[styles.container, dynamicStyles.container]}>
         <ScrollView
           showsVerticalScrollIndicator={false}
@@ -549,10 +549,10 @@ const ScanPackage = () => {
                 </>
               )}
             </View>
-            
+
             {image && !isUploading && !isAnalyzing && (
-              <Image 
-                source={{ uri: image }} 
+              <Image
+                source={{ uri: image }}
                 style={styles.previewImage}
                 resizeMode="contain"
               />

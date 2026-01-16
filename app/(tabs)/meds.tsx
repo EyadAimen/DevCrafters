@@ -417,7 +417,7 @@ const ActiveMeds = () => {
 	);
 
 	return (
-		<SafeAreaView style={styles.page}>
+		<SafeAreaView style={styles.page} edges={['top', 'left', 'right']}>
 			<LinearGradient style={styles.gradient} locations={[0, 0.5, 1]} colors={["#f8fafc", "rgba(239, 246, 255, 0.3)", "rgba(236, 254, 255, 0.2)"]}>
 				{loading ? (
 					<View style={styles.container}>

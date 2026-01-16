@@ -13,7 +13,7 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import { supabase } from "../../lib/supabase";
 import BottomNavigation from "../../components/BottomNavigation";
 
@@ -29,6 +29,7 @@ const frequencyOptions = [
 
 const AddMedicine = () => {
 	const router = useRouter();
+	const params = useLocalSearchParams();
 	const [loading, setLoading] = useState(false);
 	const [showFrequencyPicker, setShowFrequencyPicker] = useState(false);
 	const [formData, setFormData] = useState({
@@ -40,6 +41,18 @@ const AddMedicine = () => {
 		specialInstructions: "",
 		expiryDate: ""
 	});
+
+	// Pre-fill form from params
+	React.useEffect(() => {
+		if (params.name || params.dosage || params.genericName) {
+			setFormData(prev => ({
+				...prev,
+				name: (params.name as string) || prev.name,
+				dosage: (params.dosage as string) || prev.dosage,
+				genericName: (params.genericName as string) || prev.genericName
+			}));
+		}
+	}, [params.name, params.dosage, params.genericName]);
 
 	const handleInputChange = (field: string, value: string) => {
 		setFormData(prev => ({ ...prev, [field]: value }));
