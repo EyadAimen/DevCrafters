@@ -18,7 +18,7 @@ const AfterAnalysingMedicine = () => {
   const router = useRouter();
   const params = useLocalSearchParams();
   const { width, height } = useWindowDimensions();
-  
+
   // State for medicine data
   const [medicineData, setMedicineData] = React.useState<any>(null);
   const [loading, setLoading] = React.useState(true);
@@ -93,7 +93,7 @@ const AfterAnalysingMedicine = () => {
     // Get medicine name from navigation params
     const medicineName = params.medicineName as string || null;
     setExtractedMedicineName(medicineName);
-    
+
     if (medicineName) {
       fetchMedicineData(medicineName);
     } else {
@@ -179,7 +179,7 @@ const AfterAnalysingMedicine = () => {
             ]}>
               {medicineData?.medicine_name || extractedMedicineName || "Unknown Medicine"}
             </Text>
-            
+
             {medicineData?.generic_name && (
               <Text style={[
                 styles.medicineGeneric,
@@ -378,7 +378,20 @@ const AfterAnalysingMedicine = () => {
                 styles.primaryButton,
                 isLargeScreen && styles.buttonLarge
               ]}
-              onPress={() => router.push("/meds")}
+              onPress={() => {
+                const targetName = medicineData?.medicine_name || extractedMedicineName || "";
+                const targetDosage = medicineData?.dosage || "";
+                const targetGeneric = medicineData?.generic_name || "";
+
+                router.push({
+                  pathname: "/add-medicine",
+                  params: {
+                    name: targetName,
+                    dosage: targetDosage,
+                    genericName: targetGeneric
+                  }
+                });
+              }}
             >
               <Text style={[
                 styles.buttonTextPrimary,

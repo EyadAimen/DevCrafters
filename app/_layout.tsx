@@ -9,6 +9,7 @@ import { Biometrics } from "../lib/biometrics";
 import { supabase } from "../lib/supabase";
 import TourOverlay from "../components/TourOverlay";
 import * as Linking from "expo-linking";
+import { TourProvider } from "../context/TourContext";
 
 export default function RootLayout() {
     const router = useRouter();
@@ -180,9 +181,11 @@ export default function RootLayout() {
 
     return (
         <StripeProvider publishableKey="pk_test_51SZjX3BeY3ZAHzFTA7Ow7C1P4RN1pYcw4pJdlx0WhcKUHYkkHeiBhnlX4YBRDHBvwufenHtaULHB9sxVeZqNYMgZ00nQo5Sfve">
-            <Slot />
-            <FloatingChatbot />
-            <TourOverlay />
+            <TourProvider>
+                <Slot />
+                <FloatingChatbot />
+                <TourOverlay />
+            </TourProvider>
         </StripeProvider>
     );
 }

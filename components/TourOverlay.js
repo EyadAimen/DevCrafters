@@ -11,12 +11,14 @@ import {
     PanResponder,
 } from 'react-native';
 import { usePathname } from 'expo-router';
+import { useTour } from '../context/TourContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../lib/supabase';
 
 const { width, height } = Dimensions.get('window');
 
 const TourOverlay = () => {
+    const { targets } = useTour();
     const pathname = usePathname();
     const [visible, setVisible] = useState(false);
     const [hasSeenTour, setHasSeenTour] = useState(true);
@@ -42,42 +44,54 @@ const TourOverlay = () => {
     ).current;
 
     // Tour steps remain the same...
+    const getTargetPosition = (id, defaultPos) => {
+        const target = targets[id];
+        if (target) {
+            // Calculate center of the target
+            return {
+                x: target.x + (target.width / 2),
+                y: target.y + (target.height / 2)
+            };
+        }
+        return defaultPos;
+    };
+
     const tourSteps = [
         {
             id: 'welcome',
             title: 'Welcome to Pillora!',
             description: 'Your personal medication assistant',
-            position: { x: width / 2 - 140, y: 150 },
+            position: { x: width / 2, y: 150 }, // Keep welcome fixed or centered
         },
         {
             id: 'active_meds',
             title: 'Active Medications',
             description: 'Track your current medicines',
-            position: { x: 180, y: 200 },
+            position: getTargetPosition('active_meds', { x: 180, y: 200 }),
         },
         {
             id: 'scan_medicine',
             title: 'Scan Medicine',
             description: 'Identify pills with camera',
-            position: { x: 90, y: 380 },
+            position: getTargetPosition('scan_medicine', { x: 90, y: 380 }),
         },
         {
             id: 'reminders',
             title: 'Set Reminders',
             description: 'Never miss a dose',
-            position: { x: width - 115, y: 380 },
+            position: getTargetPosition('reminders', { x: width - 115, y: 380 }),
         },
         {
             id: 'find_pharmacies',
             title: 'Find Pharmacies',
             description: 'Locate nearby stores',
-            position: { x: 90, y: 500 },
+            position: getTargetPosition('find_pharmacies', { x: 90, y: 500 }),
         },
         {
             id: 'analytics',
             title: 'Analytics',
             description: 'View your medication insights',
-            position: { x: width - 115, y: 500 },
+            position: getTargetPosition('analytics', { x: width - 115, y: 500 }),
         },
     ];
 
@@ -114,7 +128,7 @@ const TourOverlay = () => {
                 setHasSeenTour(false);
             }
         };
-        
+
         supabase.auth.getUser().then(({ data: { user } }) => {
             if (user) checkTourStatus(user);
         });
@@ -135,14 +149,14 @@ const TourOverlay = () => {
 
     useEffect(() => {
         // Auto-start tour when on home screen
-        console.log('useEffect check:', { 
-            pathname, 
-            visible, 
-            hasSeenTour, 
-            userId, 
-            isCompleting 
+        console.log('useEffect check:', {
+            pathname,
+            visible,
+            hasSeenTour,
+            userId,
+            isCompleting
         });
-        
+
         if (pathname === '/home' && !visible && !hasSeenTour && userId && !isCompleting) {
             console.log('Starting auto tour');
             setTimeout(() => {
@@ -155,7 +169,7 @@ const TourOverlay = () => {
 
     const markTourAsSeen = async () => {
         if (!userId) return;
-        
+
         try {
             console.log('Marking tour as seen for user:', userId);
             const userTourKey = `@tour_seen_${userId}`;
@@ -174,7 +188,7 @@ const TourOverlay = () => {
         await markTourAsSeen();
         setVisible(false);
         setCurrentStep(0);
-        
+
         // Reset the completion flag after a delay
         setTimeout(() => {
             setIsCompleting(false);
@@ -183,7 +197,7 @@ const TourOverlay = () => {
 
     const nextStep = () => {
         console.log('Next step called. Current step:', currentStep, 'Total steps:', tourSteps.length);
-        
+
         if (currentStep < tourSteps.length - 1) {
             setCurrentStep(prev => prev + 1);
         } else {
@@ -264,8 +278,8 @@ const TourOverlay = () => {
                         style={[
                             styles.highlightContainer,
                             {
-                                left: currentStepData.position.x - 50,
-                                top: currentStepData.position.y - 50,
+                                left: currentStepData.position.x - 60,
+                                top: currentStepData.position.y - 60,
                                 transform: [{ scale: pulseAnim }],
                             }
                         ]}

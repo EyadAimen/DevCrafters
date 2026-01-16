@@ -22,8 +22,19 @@ type Medicine = {
   expiryDate?: string;
 };
 
+import { useTour } from "../../context/TourContext";
+
 export default function Home() {
   const router = useRouter();
+  const { measureAndRegister } = useTour();
+
+  // Refs for tracking elements dynamically
+  const activeMedsRef = React.useRef<any>(null);
+  const scanRef = React.useRef<any>(null);
+  const remindersRef = React.useRef<any>(null);
+  const pharmacyRef = React.useRef<any>(null);
+  const analyticsRef = React.useRef<any>(null);
+
   const [medicines, setMedicines] = useState<Medicine[]>([]);
   const [loading, setLoading] = useState(true);
   const [dueTodayCount, setDueTodayCount] = useState(0);
@@ -168,7 +179,7 @@ export default function Home() {
 
   // ------------------- Render -------------------
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
       <View style={styles.container}>
         <LinearGradient
           style={styles.gradientBg}
@@ -204,38 +215,63 @@ export default function Home() {
 
             {/* Active Meds & Adherence */}
             <View style={styles.rowBetween}>
-              <Pressable style={styles.smallCard} onPress={() => router.push("/meds")}>
+              <Pressable
+                ref={(v) => { activeMedsRef.current = v; measureAndRegister('active_meds', v); }}
+                style={styles.smallCard}
+                onPress={() => router.push("/meds")}
+                onLayout={() => measureAndRegister('active_meds', activeMedsRef.current)}
+              >
                 <View style={styles.smallCardContent}>
                   <Image source={require("../../assets/pillIconBlue.png")} style={styles.smallIcon} />
                   <Text style={styles.smallLabel}>Active Meds</Text>
                   <Text style={styles.smallValue}>{loading ? "..." : medicines.length}</Text>
                 </View>
-              </Pressable>    
+              </Pressable>
             </View>
 
             {/* Quick Actions */}
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Quick Actions</Text>
               <View style={styles.quickGrid}>
-                <Pressable style={styles.quickCard} onPress={() => router.push("/scan")}>
+                <Pressable
+                  ref={(v) => { scanRef.current = v; measureAndRegister('scan_medicine', v); }}
+                  style={styles.quickCard}
+                  onPress={() => router.push("/scan")}
+                  onLayout={() => measureAndRegister('scan_medicine', scanRef.current)}
+                >
                   <Image source={require("../../assets/scanIconBlue.png")} style={styles.quickIcon} />
                   <Text style={styles.quickTitle}>Scan Medicine</Text>
                   <Text style={styles.quickSubtitle}>Identify pills instantly</Text>
                 </Pressable>
 
-                <Pressable style={styles.quickCard} onPress={() => router.push("/reminders")}>
+                <Pressable
+                  ref={(v) => { remindersRef.current = v; measureAndRegister('reminders', v); }}
+                  style={styles.quickCard}
+                  onPress={() => router.push("/reminders")}
+                  onLayout={() => measureAndRegister('reminders', remindersRef.current)}
+                >
                   <Image source={require("../../assets/notiIconPurple.png")} style={styles.quickIcon} />
                   <Text style={styles.quickTitle}>Reminders</Text>
                   <Text style={styles.quickSubtitle}>Manage notifications</Text>
                 </Pressable>
 
-                <Pressable style={styles.quickCard} onPress={() => router.push("/pharmacyLocator")}>
+                <Pressable
+                  ref={(v) => { pharmacyRef.current = v; measureAndRegister('find_pharmacies', v); }}
+                  style={styles.quickCard}
+                  onPress={() => router.push("/pharmacyLocator")}
+                  onLayout={() => measureAndRegister('find_pharmacies', pharmacyRef.current)}
+                >
                   <Image source={require("../../assets/locationIconGreen.png")} style={styles.quickIcon} />
                   <Text style={styles.quickTitle}>Find Pharmacies</Text>
                   <Text style={styles.quickSubtitle}>Locate nearby stores</Text>
                 </Pressable>
 
-                <Pressable style={styles.quickCard} onPress={() => router.push("/analytics")}>
+                <Pressable
+                  ref={(v) => { analyticsRef.current = v; measureAndRegister('analytics', v); }}
+                  style={styles.quickCard}
+                  onPress={() => router.push("/analytics")}
+                  onLayout={() => measureAndRegister('analytics', analyticsRef.current)}
+                >
                   <Image source={require("../../assets/chartIconOrange.png")} style={styles.quickIcon} />
                   <Text style={styles.quickTitle}>Analytics</Text>
                   <Text style={styles.quickSubtitle}>View your insights</Text>

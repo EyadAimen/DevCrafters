@@ -1,6 +1,6 @@
 import * as React from "react";
 import { useState, useEffect } from "react";
-import {Text, StyleSheet, View, Pressable, Image, ScrollView, Dimensions, ActivityIndicator} from "react-native";
+import { Text, StyleSheet, View, Pressable, Image, ScrollView, Dimensions, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Svg, { LinearGradient, Stop, Defs, Path, G, Circle, Polygon, Line, Rect, Text as SvgText } from "react-native-svg";
 import BottomNavigation from "../../components/BottomNavigation";
@@ -25,8 +25,8 @@ const DosesIcon = ({ color = "#0ea5e9", size = 16 }) => (
 
 const StreakIcon = ({ color = "#0ea5e9", size = 16 }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-    <Path d="M12 2L14.5 8.5L21 9L16 13.5L17.5 21L12 17L6.5 21L8 13.5L3 9L9.5 8.5L12 2Z" 
-          fill={color} stroke={color} strokeWidth="1.5" />
+    <Path d="M12 2L14.5 8.5L21 9L16 13.5L17.5 21L12 17L6.5 21L8 13.5L3 9L9.5 8.5L12 2Z"
+      fill={color} stroke={color} strokeWidth="1.5" />
   </Svg>
 );
 
@@ -57,12 +57,12 @@ interface AnalyticsData {
   streak: number;
   missedDoses: number;
   dailyData: number[];
-  medicationBreakdown: Array<{name: string, adherence: number, dosesTaken: number}>;
+  medicationBreakdown: Array<{ name: string, adherence: number, dosesTaken: number }>;
 }
 
 interface IntakeData {
-  pieData: Array<{name: string, doses: number, percentage: number, color: string}>;
-  totalDosesByMedicine: Array<{name: string, doses: number, percentage: number}>;
+  pieData: Array<{ name: string, doses: number, percentage: number, color: string }>;
+  totalDosesByMedicine: Array<{ name: string, doses: number, percentage: number }>;
 }
 
 interface TrendData {
@@ -127,456 +127,456 @@ const Analytics = () => {
 
   // Calculate analytics from intake data
   const calculateAvailablePeriods = (firstDoseDate: Date | null): PeriodType[] => {
-  if (!firstDoseDate) {
-    return ['lifetime']; // Only show lifetime if no data
-  }
+    if (!firstDoseDate) {
+      return ['lifetime']; // Only show lifetime if no data
+    }
 
-  const now = new Date();
-  const daysSinceFirstDose = Math.ceil((now.getTime() - firstDoseDate.getTime()) / (1000 * 60 * 60 * 24));
-  
-  const periods: PeriodType[] = ['lifetime'];
-  
-  if (daysSinceFirstDose >= 7) {
-    periods.push('week');
-  }
-  if (daysSinceFirstDose >= 30) {
-    periods.push('month');
-  }
-  if (daysSinceFirstDose >= 90) {
-    periods.push('quarter');
-  }
-  if (daysSinceFirstDose >= 365) {
-    periods.push('year');
-  }
-  
-  return periods;
-};
+    const now = new Date();
+    const daysSinceFirstDose = Math.ceil((now.getTime() - firstDoseDate.getTime()) / (1000 * 60 * 60 * 24));
+
+    const periods: PeriodType[] = ['lifetime'];
+
+    if (daysSinceFirstDose >= 7) {
+      periods.push('week');
+    }
+    if (daysSinceFirstDose >= 30) {
+      periods.push('month');
+    }
+    if (daysSinceFirstDose >= 90) {
+      periods.push('quarter');
+    }
+    if (daysSinceFirstDose >= 365) {
+      periods.push('year');
+    }
+
+    return periods;
+  };
 
   // Calculate analytics from intake data
   const calculateAnalyticsFromIntake = async (period: PeriodType, intakeData: any[]) => {
-  if (intakeData.length === 0) {
-    return {
-      adherence: 0,
-      totalDoses: 0,
-      streak: 0,
-      missedDoses: 0,
-      dailyData: [],
-      medicationBreakdown: []
-    };
-  }
-
-  const now = new Date();
-  now.setHours(23, 59, 59, 999); 
-  
-  let periodStart: Date;
-  let daysInPeriod: number;
-
-  if (period === 'lifetime') {
-    // For lifetime, calculate from first dose to now
-    if (firstDoseDate) {
-      periodStart = firstDoseDate;
-      daysInPeriod = Math.ceil((now.getTime() - firstDoseDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-    } else {
-      // If no first dose date but we have data, use earliest data point
-      const earliestDate = new Date(Math.min(...intakeData.map(item => new Date(item.intake_time).getTime())));
-      periodStart = earliestDate;
-      daysInPeriod = Math.ceil((now.getTime() - earliestDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+    if (intakeData.length === 0) {
+      return {
+        adherence: 0,
+        totalDoses: 0,
+        streak: 0,
+        missedDoses: 0,
+        dailyData: [],
+        medicationBreakdown: []
+      };
     }
-  } else {
-    // Calculate period based on first dose date
-    if (firstDoseDate) {
-      const daysSinceFirstDose = Math.ceil((now.getTime() - firstDoseDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-      
-      switch (period) {
-        case 'week':
-          daysInPeriod = Math.min(7, daysSinceFirstDose);
-          periodStart = new Date(now);
-          periodStart.setDate(now.getDate() - (daysInPeriod - 1));
-          break;
-        case 'month':
-          daysInPeriod = Math.min(30, daysSinceFirstDose);
-          periodStart = new Date(now);
-          periodStart.setDate(now.getDate() - (daysInPeriod - 1));
-          break;
-        case 'quarter':
-          daysInPeriod = Math.min(90, daysSinceFirstDose);
-          periodStart = new Date(now);
-          periodStart.setDate(now.getDate() - (daysInPeriod - 1));
-          break;
-        case 'year':
-          daysInPeriod = Math.min(365, daysSinceFirstDose);
-          periodStart = new Date(now);
-          periodStart.setDate(now.getDate() - (daysInPeriod - 1));
-          break;
-        default:
-          daysInPeriod = Math.min(7, daysSinceFirstDose);
-          periodStart = new Date(now);
-          periodStart.setDate(now.getDate() - (daysInPeriod - 1));
+
+    const now = new Date();
+    now.setHours(23, 59, 59, 999);
+
+    let periodStart: Date;
+    let daysInPeriod: number;
+
+    if (period === 'lifetime') {
+      // For lifetime, calculate from first dose to now
+      if (firstDoseDate) {
+        periodStart = firstDoseDate;
+        daysInPeriod = Math.ceil((now.getTime() - firstDoseDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+      } else {
+        // If no first dose date but we have data, use earliest data point
+        const earliestDate = new Date(Math.min(...intakeData.map(item => new Date(item.intake_time).getTime())));
+        periodStart = earliestDate;
+        daysInPeriod = Math.ceil((now.getTime() - earliestDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
       }
     } else {
-      // Fallback if no first dose date
-      switch (period) {
-        case 'week':
-          daysInPeriod = 7;
-          periodStart = new Date(now);
-          periodStart.setDate(now.getDate() - 6);
-          // Reset time to beginning of the day
-          periodStart.setHours(0, 0, 0, 0);
-        break;
-        case 'month':
-          periodStart = new Date(now);
-          periodStart.setDate(now.getDate() - 29);
-          daysInPeriod = 30;
-          break;
-        case 'quarter':
-          periodStart = new Date(now);
-          periodStart.setDate(now.getDate() - 89);
-          daysInPeriod = 90;
-          break;
-        case 'year':
-          periodStart = new Date(now);
-          periodStart.setDate(now.getDate() - 364);
-          daysInPeriod = 365;
-          break;
-        default:
-          periodStart = new Date(now);
-          periodStart.setDate(now.getDate() - 6);
-          daysInPeriod = 7;
+      // Calculate period based on first dose date
+      if (firstDoseDate) {
+        const daysSinceFirstDose = Math.ceil((now.getTime() - firstDoseDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+
+        switch (period) {
+          case 'week':
+            daysInPeriod = Math.min(7, daysSinceFirstDose);
+            periodStart = new Date(now);
+            periodStart.setDate(now.getDate() - (daysInPeriod - 1));
+            break;
+          case 'month':
+            daysInPeriod = Math.min(30, daysSinceFirstDose);
+            periodStart = new Date(now);
+            periodStart.setDate(now.getDate() - (daysInPeriod - 1));
+            break;
+          case 'quarter':
+            daysInPeriod = Math.min(90, daysSinceFirstDose);
+            periodStart = new Date(now);
+            periodStart.setDate(now.getDate() - (daysInPeriod - 1));
+            break;
+          case 'year':
+            daysInPeriod = Math.min(365, daysSinceFirstDose);
+            periodStart = new Date(now);
+            periodStart.setDate(now.getDate() - (daysInPeriod - 1));
+            break;
+          default:
+            daysInPeriod = Math.min(7, daysSinceFirstDose);
+            periodStart = new Date(now);
+            periodStart.setDate(now.getDate() - (daysInPeriod - 1));
+        }
+      } else {
+        // Fallback if no first dose date
+        switch (period) {
+          case 'week':
+            daysInPeriod = 7;
+            periodStart = new Date(now);
+            periodStart.setDate(now.getDate() - 6);
+            // Reset time to beginning of the day
+            periodStart.setHours(0, 0, 0, 0);
+            break;
+          case 'month':
+            periodStart = new Date(now);
+            periodStart.setDate(now.getDate() - 29);
+            daysInPeriod = 30;
+            break;
+          case 'quarter':
+            periodStart = new Date(now);
+            periodStart.setDate(now.getDate() - 89);
+            daysInPeriod = 90;
+            break;
+          case 'year':
+            periodStart = new Date(now);
+            periodStart.setDate(now.getDate() - 364);
+            daysInPeriod = 365;
+            break;
+          default:
+            periodStart = new Date(now);
+            periodStart.setDate(now.getDate() - 6);
+            daysInPeriod = 7;
+        }
       }
     }
-  }
 
-  // Filter intake data for the period
-const periodIntake = intakeData.filter(item => {
-  const intakeTime = new Date(item.intake_time);
-  return intakeTime >= periodStart && intakeTime <= now;
-});
-
-  // Get all medicines taken DURING the period (not from entire history)
-  const periodMedicines = [...new Set(periodIntake.map(item => item.medicine_name))];
-  
-  // For lifetime, we need to track when each medicine was first taken
-  const totalDoses = periodIntake.length;
-  
-  // Calculate adherence - FIXED LOGIC
-  let expectedDosesForPeriod = 0;
-  let adherence = 0;
-
-  if (period === 'lifetime' && firstDoseDate) {
-    // For lifetime with known first dose date
-    // Calculate expected doses for each medicine based on when it was first taken
-    const medicineFirstDoseDates = new Map<string, Date>();
-    
-    // Find first intake date for each medicine in the period
-    periodIntake.forEach(item => {
-      const medName = item.medicine_name;
-      const intakeDate = new Date(item.intake_time);
-      
-      if (!medicineFirstDoseDates.has(medName) || intakeDate < medicineFirstDoseDates.get(medName)!) {
-        medicineFirstDoseDates.set(medName, intakeDate);
-      }
+    // Filter intake data for the period
+    const periodIntake = intakeData.filter(item => {
+      const intakeTime = new Date(item.intake_time);
+      return intakeTime >= periodStart && intakeTime <= now;
     });
 
-    // Calculate expected doses: for each medicine, days from its first dose to period end
-    expectedDosesForPeriod = Array.from(medicineFirstDoseDates.entries()).reduce((total, [medName, firstDate]) => {
-      const daysForThisMed = Math.ceil((now.getTime() - firstDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-      return total + daysForThisMed;
-    }, 0);
+    // Get all medicines taken DURING the period (not from entire history)
+    const periodMedicines = [...new Set(periodIntake.map(item => item.medicine_name))];
 
-    adherence = expectedDosesForPeriod > 0 ? Math.min(100, Math.round((totalDoses / expectedDosesForPeriod) * 100)) : 0;
-  } else {
-    // For other periods, use the periodMedicines (medicines actually taken during the period)
-    expectedDosesForPeriod = daysInPeriod * periodMedicines.length;
-    adherence = expectedDosesForPeriod > 0 ? Math.min(100, Math.round((totalDoses / expectedDosesForPeriod) * 100)) : 0;
-  }
+    // For lifetime, we need to track when each medicine was first taken
+    const totalDoses = periodIntake.length;
 
-  // Calculate streak (consecutive days with at least one intake in the period)
-  const intakeByDate = new Map<string, number>();
-  periodIntake.forEach(item => {
-    const date = new Date(item.intake_time).toDateString();
-    intakeByDate.set(date, (intakeByDate.get(date) || 0) + 1);
-  });
+    // Calculate adherence - FIXED LOGIC
+    let expectedDosesForPeriod = 0;
+    let adherence = 0;
 
-  let streak = 0;
-  const allDates: string[] = [];
-  for (let i = 0; i < daysInPeriod; i++) {
-    const date = new Date(periodStart);
-    date.setDate(periodStart.getDate() + i);
-    allDates.unshift(date.toDateString());
-  }
-
-  let currentStreak = 0;
-  for (const date of allDates) {
-    if (intakeByDate.has(date)) {
-      currentStreak++;
-    } else {
-      break;
-    }
-  }
-  streak = currentStreak;
-
-  // Calculate medication breakdown
-  const medicationBreakdown = periodMedicines.map(name => {
-    const dosesTaken = periodIntake.filter(item => item.medicine_name === name).length;
-    let medAdherence = 0;
-    
     if (period === 'lifetime' && firstDoseDate) {
-      // For lifetime, calculate adherence per medicine based on its first dose date
-      const firstDoseForMed = periodIntake
-        .filter(item => item.medicine_name === name)
-        .map(item => new Date(item.intake_time))
-        .sort((a, b) => a.getTime() - b.getTime())[0];
-      
-      if (firstDoseForMed) {
-        const daysForThisMed = Math.ceil((now.getTime() - firstDoseForMed.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-        medAdherence = daysForThisMed > 0 ? Math.min(100, Math.round((dosesTaken / daysForThisMed) * 100)) : 0;
-      }
+      // For lifetime with known first dose date
+      // Calculate expected doses for each medicine based on when it was first taken
+      const medicineFirstDoseDates = new Map<string, Date>();
+
+      // Find first intake date for each medicine in the period
+      periodIntake.forEach(item => {
+        const medName = item.medicine_name;
+        const intakeDate = new Date(item.intake_time);
+
+        if (!medicineFirstDoseDates.has(medName) || intakeDate < medicineFirstDoseDates.get(medName)!) {
+          medicineFirstDoseDates.set(medName, intakeDate);
+        }
+      });
+
+      // Calculate expected doses: for each medicine, days from its first dose to period end
+      expectedDosesForPeriod = Array.from(medicineFirstDoseDates.entries()).reduce((total, [medName, firstDate]) => {
+        const daysForThisMed = Math.ceil((now.getTime() - firstDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+        return total + daysForThisMed;
+      }, 0);
+
+      adherence = expectedDosesForPeriod > 0 ? Math.min(100, Math.round((totalDoses / expectedDosesForPeriod) * 100)) : 0;
     } else {
-      medAdherence = daysInPeriod > 0 ? Math.min(100, Math.round((dosesTaken / daysInPeriod) * 100)) : 0;
+      // For other periods, use the periodMedicines (medicines actually taken during the period)
+      expectedDosesForPeriod = daysInPeriod * periodMedicines.length;
+      adherence = expectedDosesForPeriod > 0 ? Math.min(100, Math.round((totalDoses / expectedDosesForPeriod) * 100)) : 0;
     }
-    
-    return { name, adherence: medAdherence, dosesTaken };
-  });
 
-  // Calculate missed doses
-  let missedDoses = 0;
-  if (period === 'lifetime' && firstDoseDate) {
-    // Use the same calculation as above for consistency
-    missedDoses = Math.max(0, expectedDosesForPeriod - totalDoses);
-  } else {
-    missedDoses = Math.max(0, expectedDosesForPeriod - totalDoses);
-  }
+    // Calculate streak (consecutive days with at least one intake in the period)
+    const intakeByDate = new Map<string, number>();
+    periodIntake.forEach(item => {
+      const date = new Date(item.intake_time).toDateString();
+      intakeByDate.set(date, (intakeByDate.get(date) || 0) + 1);
+    });
 
-  // Calculate daily data points for chart
-  const dailyData = calculateDailyData(period, periodIntake, periodStart, now, periodMedicines);
+    let streak = 0;
+    const allDates: string[] = [];
+    for (let i = 0; i < daysInPeriod; i++) {
+      const date = new Date(periodStart);
+      date.setDate(periodStart.getDate() + i);
+      allDates.unshift(date.toDateString());
+    }
 
-  return {
-    adherence,
-    totalDoses,
-    streak,
-    missedDoses,
-    dailyData,
-    medicationBreakdown
+    let currentStreak = 0;
+    for (const date of allDates) {
+      if (intakeByDate.has(date)) {
+        currentStreak++;
+      } else {
+        break;
+      }
+    }
+    streak = currentStreak;
+
+    // Calculate medication breakdown
+    const medicationBreakdown = periodMedicines.map(name => {
+      const dosesTaken = periodIntake.filter(item => item.medicine_name === name).length;
+      let medAdherence = 0;
+
+      if (period === 'lifetime' && firstDoseDate) {
+        // For lifetime, calculate adherence per medicine based on its first dose date
+        const firstDoseForMed = periodIntake
+          .filter(item => item.medicine_name === name)
+          .map(item => new Date(item.intake_time))
+          .sort((a, b) => a.getTime() - b.getTime())[0];
+
+        if (firstDoseForMed) {
+          const daysForThisMed = Math.ceil((now.getTime() - firstDoseForMed.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+          medAdherence = daysForThisMed > 0 ? Math.min(100, Math.round((dosesTaken / daysForThisMed) * 100)) : 0;
+        }
+      } else {
+        medAdherence = daysInPeriod > 0 ? Math.min(100, Math.round((dosesTaken / daysInPeriod) * 100)) : 0;
+      }
+
+      return { name, adherence: medAdherence, dosesTaken };
+    });
+
+    // Calculate missed doses
+    let missedDoses = 0;
+    if (period === 'lifetime' && firstDoseDate) {
+      // Use the same calculation as above for consistency
+      missedDoses = Math.max(0, expectedDosesForPeriod - totalDoses);
+    } else {
+      missedDoses = Math.max(0, expectedDosesForPeriod - totalDoses);
+    }
+
+    // Calculate daily data points for chart
+    const dailyData = calculateDailyData(period, periodIntake, periodStart, now, periodMedicines);
+
+    return {
+      adherence,
+      totalDoses,
+      streak,
+      missedDoses,
+      dailyData,
+      medicationBreakdown
+    };
   };
-};
 
   const calculateDailyData = (period: PeriodType, intakeData: any[], periodStart: Date, periodEnd: Date, allMedicines: string[]) => {
-  const dataPoints: number[] = [];
-  
-  if (intakeData.length === 0 || allMedicines.length === 0) {
-    // Return empty data points based on period
-    switch (period) {
-      case 'lifetime': 
-        // For lifetime, show daily data if less than 7 days, otherwise weekly
-        if (firstDoseDate) {
-          const daysDiff = Math.ceil((periodEnd.getTime() - periodStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-          if (daysDiff <= 7) {
-            return Array(Math.min(daysDiff, 7)).fill(0); // Daily for up to 7 days
-          } else {
-            const weeks = Math.ceil(daysDiff / 7);
-            return Array(Math.min(weeks, 8)).fill(0); // Weekly for more than 7 days
+    const dataPoints: number[] = [];
+
+    if (intakeData.length === 0 || allMedicines.length === 0) {
+      // Return empty data points based on period
+      switch (period) {
+        case 'lifetime':
+          // For lifetime, show daily data if less than 7 days, otherwise weekly
+          if (firstDoseDate) {
+            const daysDiff = Math.ceil((periodEnd.getTime() - periodStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+            if (daysDiff <= 7) {
+              return Array(Math.min(daysDiff, 7)).fill(0); // Daily for up to 7 days
+            } else {
+              const weeks = Math.ceil(daysDiff / 7);
+              return Array(Math.min(weeks, 8)).fill(0); // Weekly for more than 7 days
+            }
           }
-        }
-        return Array(7).fill(0);
-      case 'week': return Array(7).fill(0);
-      case 'month': return Array(4).fill(0);
-      case 'quarter': return Array(3).fill(0);
-      case 'year': return Array(4).fill(0);
-      default: return Array(7).fill(0);
+          return Array(7).fill(0);
+        case 'week': return Array(7).fill(0);
+        case 'month': return Array(4).fill(0);
+        case 'quarter': return Array(3).fill(0);
+        case 'year': return Array(4).fill(0);
+        default: return Array(7).fill(0);
+      }
     }
-  }
-  
-  // Group intake by time unit based on period
-  const intakeByUnit = new Map<string, number>();
-  
-  intakeData.forEach(item => {
-    const intakeTime = new Date(item.intake_time);
-    let unitKey: string;
-    
+
+    // Group intake by time unit based on period
+    const intakeByUnit = new Map<string, number>();
+
+    intakeData.forEach(item => {
+      const intakeTime = new Date(item.intake_time);
+      let unitKey: string;
+
+      switch (period) {
+        case 'lifetime':
+          // For lifetime, show daily data if less than 7 days since first dose, otherwise weekly
+          if (firstDoseDate) {
+            const daysDiff = Math.ceil((periodEnd.getTime() - periodStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+            if (daysDiff <= 7) {
+              // Group by day
+              unitKey = intakeTime.toDateString();
+            } else {
+              // Group by week
+              const weekNumber = Math.floor((intakeTime.getTime() - periodStart.getTime()) / (7 * 24 * 60 * 60 * 1000));
+              unitKey = `Week ${weekNumber + 1}`;
+            }
+          } else {
+            unitKey = intakeTime.toDateString();
+          }
+          break;
+        case 'week':
+          unitKey = intakeTime.toDateString();
+          break;
+        case 'month':
+          // Group by week
+          const weekNumber = Math.floor((intakeTime.getTime() - periodStart.getTime()) / (7 * 24 * 60 * 60 * 1000));
+          unitKey = `Week ${weekNumber + 1}`;
+          break;
+        case 'quarter':
+          // Group by month
+          const monthName = intakeTime.toLocaleString('default', { month: 'short' });
+          unitKey = monthName;
+          break;
+        case 'year':
+          // Group by quarter
+          const quarter = Math.floor(intakeTime.getMonth() / 3) + 1;
+          unitKey = `Q${quarter}`;
+          break;
+        default:
+          unitKey = intakeTime.toDateString();
+      }
+
+      intakeByUnit.set(unitKey, (intakeByUnit.get(unitKey) || 0) + 1);
+    });
+
+    // Calculate adherence per time unit
     switch (period) {
       case 'lifetime':
-        // For lifetime, show daily data if less than 7 days since first dose, otherwise weekly
         if (firstDoseDate) {
           const daysDiff = Math.ceil((periodEnd.getTime() - periodStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+
           if (daysDiff <= 7) {
-            // Group by day
-            unitKey = intakeTime.toDateString();
+            // Show daily data
+            for (let i = 0; i < daysDiff; i++) {
+              const date = new Date(periodStart);
+              date.setDate(periodStart.getDate() + i);
+              if (date > periodEnd) break;
+
+              const dateKey = date.toDateString();
+              const dosesTaken = intakeByUnit.get(dateKey) || 0;
+              const adherence = allMedicines.length > 0 ? Math.round((dosesTaken / allMedicines.length) * 100) : 0;
+              dataPoints.push(adherence);
+            }
+            // Fill remaining days with 0 if needed
+            while (dataPoints.length < Math.min(daysDiff, 7)) {
+              dataPoints.push(0);
+            }
           } else {
-            // Group by week
-            const weekNumber = Math.floor((intakeTime.getTime() - periodStart.getTime()) / (7 * 24 * 60 * 60 * 1000));
-            unitKey = `Week ${weekNumber + 1}`;
+            // Show weekly data
+            const weeks = Math.ceil(daysDiff / 7);
+            for (let week = 0; week < weeks; week++) {
+              const weekKey = `Week ${week + 1}`;
+              const dosesTaken = intakeByUnit.get(weekKey) || 0;
+              const adherence = allMedicines.length > 0 ? Math.round((dosesTaken / (allMedicines.length * 7)) * 100) : 0;
+              dataPoints.push(adherence);
+              if (dataPoints.length >= 8) break; // Limit to 8 weeks
+            }
           }
         } else {
-          unitKey = intakeTime.toDateString();
-        }
-        break;
-      case 'week':
-        unitKey = intakeTime.toDateString();
-        break;
-      case 'month':
-        // Group by week
-        const weekNumber = Math.floor((intakeTime.getTime() - periodStart.getTime()) / (7 * 24 * 60 * 60 * 1000));
-        unitKey = `Week ${weekNumber + 1}`;
-        break;
-      case 'quarter':
-        // Group by month
-        const monthName = intakeTime.toLocaleString('default', { month: 'short' });
-        unitKey = monthName;
-        break;
-      case 'year':
-        // Group by quarter
-        const quarter = Math.floor(intakeTime.getMonth() / 3) + 1;
-        unitKey = `Q${quarter}`;
-        break;
-      default:
-        unitKey = intakeTime.toDateString();
-    }
-    
-    intakeByUnit.set(unitKey, (intakeByUnit.get(unitKey) || 0) + 1);
-  });
-
-  // Calculate adherence per time unit
-  switch (period) {
-    case 'lifetime':
-      if (firstDoseDate) {
-        const daysDiff = Math.ceil((periodEnd.getTime() - periodStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-        
-        if (daysDiff <= 7) {
-          // Show daily data
-          for (let i = 0; i < daysDiff; i++) {
+          // Fallback: show last 7 days
+          for (let i = 0; i < 7; i++) {
             const date = new Date(periodStart);
             date.setDate(periodStart.getDate() + i);
-            if (date > periodEnd) break;
-            
             const dateKey = date.toDateString();
             const dosesTaken = intakeByUnit.get(dateKey) || 0;
             const adherence = allMedicines.length > 0 ? Math.round((dosesTaken / allMedicines.length) * 100) : 0;
             dataPoints.push(adherence);
           }
-          // Fill remaining days with 0 if needed
-          while (dataPoints.length < Math.min(daysDiff, 7)) {
-            dataPoints.push(0);
-          }
-        } else {
-          // Show weekly data
-          const weeks = Math.ceil(daysDiff / 7);
-          for (let week = 0; week < weeks; week++) {
-            const weekKey = `Week ${week + 1}`;
-            const dosesTaken = intakeByUnit.get(weekKey) || 0;
-            const adherence = allMedicines.length > 0 ? Math.round((dosesTaken / (allMedicines.length * 7)) * 100) : 0;
-            dataPoints.push(adherence);
-            if (dataPoints.length >= 8) break; // Limit to 8 weeks
-          }
         }
-      } else {
-        // Fallback: show last 7 days
+        break;
+
+      case 'week':
+        // Calculate daily adherence for each of the last 7 days
+        const weekDays = Array(7).fill(0);
+
+        // For each intake, check which day it belongs to
+        intakeData.forEach(item => {
+          const intakeTime = new Date(item.intake_time);
+
+          // Reset times to beginning of day for accurate comparison
+          const intakeDate = new Date(intakeTime.getFullYear(), intakeTime.getMonth(), intakeTime.getDate());
+          const periodStartDate = new Date(periodStart.getFullYear(), periodStart.getMonth(), periodStart.getDate());
+
+          // Calculate difference in days
+          const diffTime = intakeDate.getTime() - periodStartDate.getTime();
+          const dayIndex = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+
+          if (dayIndex >= 0 && dayIndex < 7) {
+            weekDays[dayIndex]++;
+          }
+        });
+
+        // Calculate adherence percentage for each day
         for (let i = 0; i < 7; i++) {
-          const date = new Date(periodStart);
-          date.setDate(periodStart.getDate() + i);
-          const dateKey = date.toDateString();
-          const dosesTaken = intakeByUnit.get(dateKey) || 0;
-          const adherence = allMedicines.length > 0 ? Math.round((dosesTaken / allMedicines.length) * 100) : 0;
+          const adherence = allMedicines.length > 0 ? Math.round((weekDays[i] / allMedicines.length) * 100) : 0;
           dataPoints.push(adherence);
         }
-      }
-      break;
-      
-    case 'week':
-  // Calculate daily adherence for each of the last 7 days
-  const weekDays = Array(7).fill(0);
-  
-  // For each intake, check which day it belongs to
-  intakeData.forEach(item => {
-    const intakeTime = new Date(item.intake_time);
-    
-    // Reset times to beginning of day for accurate comparison
-    const intakeDate = new Date(intakeTime.getFullYear(), intakeTime.getMonth(), intakeTime.getDate());
-    const periodStartDate = new Date(periodStart.getFullYear(), periodStart.getMonth(), periodStart.getDate());
-    
-    // Calculate difference in days
-    const diffTime = intakeDate.getTime() - periodStartDate.getTime();
-    const dayIndex = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-    
-    if (dayIndex >= 0 && dayIndex < 7) {
-      weekDays[dayIndex]++;
+        break;
+
+      case 'month':
+        for (let week = 0; week < 4; week++) {
+          const weekKey = `Week ${week + 1}`;
+          const dosesTaken = intakeByUnit.get(weekKey) || 0;
+          const adherence = allMedicines.length > 0 ? Math.round((dosesTaken / (allMedicines.length * 7)) * 100) : 0;
+          dataPoints.push(adherence);
+        }
+        break;
+
+      case 'quarter':
+        for (let month = 0; month < 3; month++) {
+          const monthDate = new Date(periodStart);
+          monthDate.setMonth(periodStart.getMonth() + month);
+          const monthKey = monthDate.toLocaleString('default', { month: 'short' });
+          const dosesTaken = intakeByUnit.get(monthKey) || 0;
+          const daysInMonth = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0).getDate();
+          const adherence = allMedicines.length > 0 ? Math.round((dosesTaken / (allMedicines.length * daysInMonth)) * 100) : 0;
+          dataPoints.push(adherence);
+        }
+        break;
+
+      case 'year':
+        for (let quarter = 1; quarter <= 4; quarter++) {
+          const quarterKey = `Q${quarter}`;
+          const dosesTaken = intakeByUnit.get(quarterKey) || 0;
+          const adherence = allMedicines.length > 0 ? Math.round((dosesTaken / (allMedicines.length * 90)) * 100) : 0;
+          dataPoints.push(adherence);
+        }
+        break;
     }
-  });
-  
-  // Calculate adherence percentage for each day
-  for (let i = 0; i < 7; i++) {
-    const adherence = allMedicines.length > 0 ? Math.round((weekDays[i] / allMedicines.length) * 100) : 0;
-    dataPoints.push(adherence);
-  }
-  break;
-      
-    case 'month':
-      for (let week = 0; week < 4; week++) {
-        const weekKey = `Week ${week + 1}`;
-        const dosesTaken = intakeByUnit.get(weekKey) || 0;
-        const adherence = allMedicines.length > 0 ? Math.round((dosesTaken / (allMedicines.length * 7)) * 100) : 0;
-        dataPoints.push(adherence);
-      }
-      break;
-      
-    case 'quarter':
-      for (let month = 0; month < 3; month++) {
-        const monthDate = new Date(periodStart);
-        monthDate.setMonth(periodStart.getMonth() + month);
-        const monthKey = monthDate.toLocaleString('default', { month: 'short' });
-        const dosesTaken = intakeByUnit.get(monthKey) || 0;
-        const daysInMonth = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0).getDate();
-        const adherence = allMedicines.length > 0 ? Math.round((dosesTaken / (allMedicines.length * daysInMonth)) * 100) : 0;
-        dataPoints.push(adherence);
-      }
-      break;
-      
-    case 'year':
-      for (let quarter = 1; quarter <= 4; quarter++) {
-        const quarterKey = `Q${quarter}`;
-        const dosesTaken = intakeByUnit.get(quarterKey) || 0;
-        const adherence = allMedicines.length > 0 ? Math.round((dosesTaken / (allMedicines.length * 90)) * 100) : 0;
-        dataPoints.push(adherence);
-      }
-      break;
-  }
 
-  return dataPoints;
-};
+    return dataPoints;
+  };
 
-const calculateTotalMissedDoses = (firstDoseDate: Date | null, allIntakeData: any[]) => {
-  if (!firstDoseDate || allIntakeData.length === 0) {
-    return 0;
-  }
-
-  const now = new Date();
-  const periodMedicines = [...new Set(allIntakeData.map(item => item.medicine_name))];
-  
-  // Calculate first intake date for each medicine
-  const medicineFirstDoseDates = new Map<string, Date>();
-  
-  allIntakeData.forEach(item => {
-    const medName = item.medicine_name;
-    const intakeDate = new Date(item.intake_time);
-    
-    if (!medicineFirstDoseDates.has(medName) || intakeDate < medicineFirstDoseDates.get(medName)!) {
-      medicineFirstDoseDates.set(medName, intakeDate);
+  const calculateTotalMissedDoses = (firstDoseDate: Date | null, allIntakeData: any[]) => {
+    if (!firstDoseDate || allIntakeData.length === 0) {
+      return 0;
     }
-  });
 
-  // Calculate expected doses: for each medicine, days from its first dose to now
-  const totalExpectedDoses = Array.from(medicineFirstDoseDates.entries()).reduce((total, [medName, firstDate]) => {
-    const daysForThisMed = Math.ceil((now.getTime() - firstDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-    return total + daysForThisMed;
-  }, 0);
-  
-  // Calculate actual doses
-  const totalActualDoses = allIntakeData.length;
-  
-  // Calculate missed doses
-  const missedDoses = Math.max(0, totalExpectedDoses - totalActualDoses);
-  
-  return missedDoses;
-};
+    const now = new Date();
+    const periodMedicines = [...new Set(allIntakeData.map(item => item.medicine_name))];
+
+    // Calculate first intake date for each medicine
+    const medicineFirstDoseDates = new Map<string, Date>();
+
+    allIntakeData.forEach(item => {
+      const medName = item.medicine_name;
+      const intakeDate = new Date(item.intake_time);
+
+      if (!medicineFirstDoseDates.has(medName) || intakeDate < medicineFirstDoseDates.get(medName)!) {
+        medicineFirstDoseDates.set(medName, intakeDate);
+      }
+    });
+
+    // Calculate expected doses: for each medicine, days from its first dose to now
+    const totalExpectedDoses = Array.from(medicineFirstDoseDates.entries()).reduce((total, [medName, firstDate]) => {
+      const daysForThisMed = Math.ceil((now.getTime() - firstDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+      return total + daysForThisMed;
+    }, 0);
+
+    // Calculate actual doses
+    const totalActualDoses = allIntakeData.length;
+
+    // Calculate missed doses
+    const missedDoses = Math.max(0, totalExpectedDoses - totalActualDoses);
+
+    return missedDoses;
+  };
 
   const fetchAnalyticsFromSupabase = async (period: PeriodType) => {
     try {
@@ -601,7 +601,7 @@ const calculateTotalMissedDoses = (firstDoseDate: Date | null, allIntakeData: an
 
       // Calculate analytics from the intake data
       const analytics = await calculateAnalyticsFromIntake(period, allIntakeData);
-      
+
       // Calculate trend data (only for periods other than lifetime)
       let trendDataNew: TrendData = {
         hasImproved: false,
@@ -615,7 +615,7 @@ const calculateTotalMissedDoses = (firstDoseDate: Date | null, allIntakeData: an
         const previousPeriodAnalytics = await calculatePreviousPeriodAnalytics(period, allIntakeData);
         const hasImproved = analytics.adherence > previousPeriodAnalytics.adherence;
         const percentageChange = Math.abs(analytics.adherence - previousPeriodAnalytics.adherence);
-        
+
         let message = "";
         if (analytics.adherence > 0) {
           message = hasImproved
@@ -634,16 +634,16 @@ const calculateTotalMissedDoses = (firstDoseDate: Date | null, allIntakeData: an
         };
       } else {
         // For lifetime, show a different message
-        const daysSinceFirstDose = firstDoseDate ? 
+        const daysSinceFirstDose = firstDoseDate ?
           Math.ceil((new Date().getTime() - firstDoseDate.getTime()) / (1000 * 60 * 60 * 24)) : 0;
-        
-        trendDataNew.message = daysSinceFirstDose > 0 
+
+        trendDataNew.message = daysSinceFirstDose > 0
           ? `You've been tracking your medication for ${daysSinceFirstDose} days. Your lifetime adherence rate is ${analytics.adherence}%.`
           : "View your overall medication adherence history.";
       }
 
       return { analyticsData: analytics, trendData: trendDataNew };
-      
+
     } catch (error) {
       console.error('Error in fetchAnalyticsFromSupabase:', error);
       return null;
@@ -707,154 +707,154 @@ const calculateTotalMissedDoses = (firstDoseDate: Date | null, allIntakeData: an
   };
 
   const fetchAnalytics = async () => {
-  try {
-    setLoading(true);
+    try {
+      setLoading(true);
 
-    // Get first dose date
-    const firstDate = await getFirstDoseDate();
-    setFirstDoseDate(firstDate);
+      // Get first dose date
+      const firstDate = await getFirstDoseDate();
+      setFirstDoseDate(firstDate);
 
-    // Calculate available periods based on first dose date
-    const periods = calculateAvailablePeriods(firstDate);
-    setAvailablePeriods(periods);
+      // Calculate available periods based on first dose date
+      const periods = calculateAvailablePeriods(firstDate);
+      setAvailablePeriods(periods);
 
-    // If current selected period is not available, switch to lifetime
-    if (!periods.includes(selectedPeriod)) {
-      setSelectedPeriod('lifetime');
-    }
-
-    // Fetch all intake data for this user
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      setLoading(false);
-      return;
-    }
-
-    const { data: allIntakeData, error } = await supabase
-      .from('intake')
-      .select('id, user_id, medicine_name, intake_time')
-      .eq('user_id', user.id)
-      .order('intake_time', { ascending: true });
-
-    if (error) {
-      console.error('Error fetching intake data:', error);
-      setLoading(false);
-      return;
-    }
-
-    // Fetch analytics from Supabase
-    const supabaseData = await fetchAnalyticsFromSupabase(selectedPeriod);
-    if (supabaseData) {
-      // Update missed doses with the calculated total for lifetime
-      let missedDoses = supabaseData.analyticsData.missedDoses;
-      if (selectedPeriod === 'lifetime' && firstDate) {
-        missedDoses = calculateTotalMissedDoses(firstDate, allIntakeData || []);
+      // If current selected period is not available, switch to lifetime
+      if (!periods.includes(selectedPeriod)) {
+        setSelectedPeriod('lifetime');
       }
-      
-      const updatedAnalyticsData = {
-        ...supabaseData.analyticsData,
-        missedDoses
-      };
-      
-      setAnalyticsData(updatedAnalyticsData);
-      setTrendData(supabaseData.trendData);
-      
-      // Update intake data
-      updateIntakeData(updatedAnalyticsData.medicationBreakdown, updatedAnalyticsData.totalDoses);
-    } else {
-      // No data available
-      setAnalyticsData({
-        adherence: 0,
-        totalDoses: 0,
-        streak: 0,
-        missedDoses: 0,
-        dailyData: [],
-        medicationBreakdown: []
-      });
-      setTrendData({
-        hasImproved: false,
-        percentageChange: 0,
-        message: "No medication intake data available. Start by logging your first dose!",
-        previousAdherence: 0,
-        currentAdherence: 0
-      });
+
+      // Fetch all intake data for this user
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        setLoading(false);
+        return;
+      }
+
+      const { data: allIntakeData, error } = await supabase
+        .from('intake')
+        .select('id, user_id, medicine_name, intake_time')
+        .eq('user_id', user.id)
+        .order('intake_time', { ascending: true });
+
+      if (error) {
+        console.error('Error fetching intake data:', error);
+        setLoading(false);
+        return;
+      }
+
+      // Fetch analytics from Supabase
+      const supabaseData = await fetchAnalyticsFromSupabase(selectedPeriod);
+      if (supabaseData) {
+        // Update missed doses with the calculated total for lifetime
+        let missedDoses = supabaseData.analyticsData.missedDoses;
+        if (selectedPeriod === 'lifetime' && firstDate) {
+          missedDoses = calculateTotalMissedDoses(firstDate, allIntakeData || []);
+        }
+
+        const updatedAnalyticsData = {
+          ...supabaseData.analyticsData,
+          missedDoses
+        };
+
+        setAnalyticsData(updatedAnalyticsData);
+        setTrendData(supabaseData.trendData);
+
+        // Update intake data
+        updateIntakeData(updatedAnalyticsData.medicationBreakdown, updatedAnalyticsData.totalDoses);
+      } else {
+        // No data available
+        setAnalyticsData({
+          adherence: 0,
+          totalDoses: 0,
+          streak: 0,
+          missedDoses: 0,
+          dailyData: [],
+          medicationBreakdown: []
+        });
+        setTrendData({
+          hasImproved: false,
+          percentageChange: 0,
+          message: "No medication intake data available. Start by logging your first dose!",
+          previousAdherence: 0,
+          currentAdherence: 0
+        });
+        setIntakeData({
+          pieData: [],
+          totalDosesByMedicine: []
+        });
+      }
+    } catch (error) {
+      console.error('Error in fetchAnalytics:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const updateIntakeData = (medicationBreakdown: Array<{ name: string, adherence: number, dosesTaken: number }>, totalDoses: number) => {
+    if (medicationBreakdown.length === 0 || totalDoses === 0) {
       setIntakeData({
         pieData: [],
         totalDosesByMedicine: []
       });
+      return;
     }
-  } catch (error) {
-    console.error('Error in fetchAnalytics:', error);
-  } finally {
-    setLoading(false);
-  }
-};
 
-  const updateIntakeData = (medicationBreakdown: Array<{name: string, adherence: number, dosesTaken: number}>, totalDoses: number) => {
-  if (medicationBreakdown.length === 0 || totalDoses === 0) {
-    setIntakeData({
-      pieData: [],
-      totalDosesByMedicine: []
+    const colors = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#06B6D4', '#84CC16', '#F97316'];
+
+    // First, create initial pie data with raw percentages
+    const pieData = medicationBreakdown.map((medication, index) => {
+      const percentage = totalDoses > 0 ? (medication.dosesTaken / totalDoses) * 100 : 0;
+      return {
+        name: medication.name,
+        doses: medication.dosesTaken,
+        percentage: Math.round(percentage * 100) / 100, // Keep 2 decimal places for calculation
+        color: colors[index % colors.length]
+      };
     });
-    return;
-  }
 
-  const colors = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#06B6D4', '#84CC16', '#F97316'];
+    // Filter out items with 0 doses
+    const filteredPieData = pieData.filter(item => item.doses > 0);
 
-  // First, create initial pie data with raw percentages
-  const pieData = medicationBreakdown.map((medication, index) => {
-    const percentage = totalDoses > 0 ? (medication.dosesTaken / totalDoses) * 100 : 0;
-    return {
-      name: medication.name,
-      doses: medication.dosesTaken,
-      percentage: Math.round(percentage * 100) / 100, // Keep 2 decimal places for calculation
-      color: colors[index % colors.length]
-    };
-  });
-
-  // Filter out items with 0 doses
-  const filteredPieData = pieData.filter(item => item.doses > 0);
-
-  if (filteredPieData.length === 0) {
-    setIntakeData({
-      pieData: [],
-      totalDosesByMedicine: []
-    });
-    return;
-  }
-
-  // Calculate total percentage for normalization
-  const totalPercentage = filteredPieData.reduce((sum, item) => sum + item.percentage, 0);
-  
-  // Normalize percentages to sum to 100
-  const normalizedPieData = filteredPieData.map(item => ({
-    ...item,
-    percentage: Math.round((item.percentage / totalPercentage) * 100)
-  }));
-
-  // Adjust rounding errors
-  let sumRounded = normalizedPieData.reduce((sum, item) => sum + item.percentage, 0);
-  let difference = 100 - sumRounded;
-  
-  if (difference !== 0 && normalizedPieData.length > 0) {
-    // Sort by percentage in descending order and adjust the largest one
-    const sortedData = [...normalizedPieData].sort((a, b) => b.percentage - a.percentage);
-    const largestItem = sortedData[0];
-    const index = normalizedPieData.findIndex(item => item.name === largestItem.name);
-    if (index !== -1) {
-      normalizedPieData[index].percentage += difference;
+    if (filteredPieData.length === 0) {
+      setIntakeData({
+        pieData: [],
+        totalDosesByMedicine: []
+      });
+      return;
     }
-  }
 
-  setIntakeData({
-    pieData: normalizedPieData,
-    totalDosesByMedicine: normalizedPieData.map(item => ({
-      name: item.name,
-      doses: item.doses,
-      percentage: item.percentage
-    }))
-  });
-};
+    // Calculate total percentage for normalization
+    const totalPercentage = filteredPieData.reduce((sum, item) => sum + item.percentage, 0);
+
+    // Normalize percentages to sum to 100
+    const normalizedPieData = filteredPieData.map(item => ({
+      ...item,
+      percentage: Math.round((item.percentage / totalPercentage) * 100)
+    }));
+
+    // Adjust rounding errors
+    let sumRounded = normalizedPieData.reduce((sum, item) => sum + item.percentage, 0);
+    let difference = 100 - sumRounded;
+
+    if (difference !== 0 && normalizedPieData.length > 0) {
+      // Sort by percentage in descending order and adjust the largest one
+      const sortedData = [...normalizedPieData].sort((a, b) => b.percentage - a.percentage);
+      const largestItem = sortedData[0];
+      const index = normalizedPieData.findIndex(item => item.name === largestItem.name);
+      if (index !== -1) {
+        normalizedPieData[index].percentage += difference;
+      }
+    }
+
+    setIntakeData({
+      pieData: normalizedPieData,
+      totalDosesByMedicine: normalizedPieData.map(item => ({
+        name: item.name,
+        doses: item.doses,
+        percentage: item.percentage
+      }))
+    });
+  };
 
   useEffect(() => {
     fetchAnalytics();
@@ -889,114 +889,197 @@ const calculateTotalMissedDoses = (firstDoseDate: Date | null, allIntakeData: an
   };
 
   const getPeriodDataLabels = (period: PeriodType) => {
-  switch (period) {
-    case 'lifetime':
-      if (firstDoseDate) {
-        const now = new Date();
-        const daysDiff = Math.ceil((now.getTime() - firstDoseDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-        
-        if (daysDiff <= 7) {
-          // Show day names for up to 7 days (based on actual dates)
-          const labels = [];
-          for (let i = 0; i < Math.min(daysDiff, 7); i++) {
-            const date = new Date(firstDoseDate);
-            date.setDate(firstDoseDate.getDate() + i);
-            labels.push(date.toLocaleDateString('en-US', { weekday: 'short' }));
-          }
-          return labels;
-        } else {
-          // Show week numbers for more than 7 days
-          const weeks = Math.ceil(daysDiff / 7);
-          const labels = [];
-          for (let i = 1; i <= Math.min(weeks, 8); i++) {
-            labels.push(`W${i}`);
-          }
-          return labels;
-        }
-      }
-      return ['Overall'];
-      
-    case 'week':
-      // Show day names for the current week (today and previous 6 days)
-      const labels = [];
-      const today = new Date();
-      
-      for (let i = 6; i >= 0; i--) {
-        const date = new Date(today);
-        date.setDate(today.getDate() - i);
-        labels.push(date.toLocaleDateString('en-US', { weekday: 'short' }));
-      }
-      return labels;
-      
-    case 'month':
-      return ['W1', 'W2', 'W3', 'W4'];
-      
-    case 'quarter':
-      const now = new Date();
-      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-      const quarterLabels = [];
-      
-      // For quarter, show current month and previous 2 months
-      for (let i = 2; i >= 0; i--) {
-        const month = new Date(now);
-        month.setMonth(now.getMonth() - i);
-        quarterLabels.push(monthNames[month.getMonth()]);
-      }
-      return quarterLabels;
-      
-    case 'year':
-      return ['Q1', 'Q2', 'Q3', 'Q4'];
-      
-    default:
-      return ['Overall'];
-  }
-};
+    switch (period) {
+      case 'lifetime':
+        if (firstDoseDate) {
+          const now = new Date();
+          const daysDiff = Math.ceil((now.getTime() - firstDoseDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
 
-  const renderPieChart = (data: Array<{name: string, doses: number, percentage: number, color: string}>) => {
-  if (data.length === 0) {
-    return (
-      <View style={styles.pieChartContainer}>
-        <View style={styles.pieChartTop}>
-          <View style={styles.actualPieLarge}>
-            <Svg width={180} height={180} viewBox="0 0 180 180">
-              <Circle cx="90" cy="90" r="90" fill="#f1f5f9" />
-              <SvgText x="90" y="90" textAnchor="middle" fill="#64748b" fontSize="14">
-                No Data
-              </SvgText>
-            </Svg>
-            <View style={styles.pieOverlayLarge}>
-              <View style={styles.pieCenterContent}>
-                <Text style={styles.pieCenterTextLarge}>Total</Text>
-                <Text style={styles.pieCenterSubtext}>0 doses</Text>
+          if (daysDiff <= 7) {
+            // Show day names for up to 7 days (based on actual dates)
+            const labels = [];
+            for (let i = 0; i < Math.min(daysDiff, 7); i++) {
+              const date = new Date(firstDoseDate);
+              date.setDate(firstDoseDate.getDate() + i);
+              labels.push(date.toLocaleDateString('en-US', { weekday: 'short' }));
+            }
+            return labels;
+          } else {
+            // Show week numbers for more than 7 days
+            const weeks = Math.ceil(daysDiff / 7);
+            const labels = [];
+            for (let i = 1; i <= Math.min(weeks, 8); i++) {
+              labels.push(`W${i}`);
+            }
+            return labels;
+          }
+        }
+        return ['Overall'];
+
+      case 'week':
+        // Show day names for the current week (today and previous 6 days)
+        const labels = [];
+        const today = new Date();
+
+        for (let i = 6; i >= 0; i--) {
+          const date = new Date(today);
+          date.setDate(today.getDate() - i);
+          labels.push(date.toLocaleDateString('en-US', { weekday: 'short' }));
+        }
+        return labels;
+
+      case 'month':
+        return ['W1', 'W2', 'W3', 'W4'];
+
+      case 'quarter':
+        const now = new Date();
+        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const quarterLabels = [];
+
+        // For quarter, show current month and previous 2 months
+        for (let i = 2; i >= 0; i--) {
+          const month = new Date(now);
+          month.setMonth(now.getMonth() - i);
+          quarterLabels.push(monthNames[month.getMonth()]);
+        }
+        return quarterLabels;
+
+      case 'year':
+        return ['Q1', 'Q2', 'Q3', 'Q4'];
+
+      default:
+        return ['Overall'];
+    }
+  };
+
+  const renderPieChart = (data: Array<{ name: string, doses: number, percentage: number, color: string }>) => {
+    if (data.length === 0) {
+      return (
+        <View style={styles.pieChartContainer}>
+          <View style={styles.pieChartTop}>
+            <View style={styles.actualPieLarge}>
+              <Svg width={180} height={180} viewBox="0 0 180 180">
+                <Circle cx="90" cy="90" r="90" fill="#f1f5f9" />
+                <SvgText x="90" y="90" textAnchor="middle" fill="#64748b" fontSize="14">
+                  No Data
+                </SvgText>
+              </Svg>
+              <View style={styles.pieOverlayLarge}>
+                <View style={styles.pieCenterContent}>
+                  <Text style={styles.pieCenterTextLarge}>Total</Text>
+                  <Text style={styles.pieCenterSubtext}>0 doses</Text>
+                </View>
               </View>
             </View>
           </View>
+          <View style={styles.pieChartBottom}>
+            <Text style={styles.noDataText}>No medication intake recorded</Text>
+          </View>
         </View>
-        <View style={styles.pieChartBottom}>
-          <Text style={styles.noDataText}>No medication intake recorded</Text>
+      );
+    }
+
+    const size = 180;
+    const radius = 90;
+    const centerX = size / 2;
+    const centerY = size / 2;
+
+    // Handle single slice case
+    if (data.length === 1 && data[0].percentage === 100) {
+      const item = data[0];
+      const totalDoses = item.doses;
+
+      return (
+        <View style={styles.pieChartContainer}>
+          <View style={styles.pieChartTop}>
+            <View style={styles.actualPieLarge}>
+              <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+                {/* Full circle for single slice */}
+                <Circle cx={centerX} cy={centerY} r={radius} fill={item.color} />
+                {/* Donut hole */}
+                <Circle cx={centerX} cy={centerY} r={radius * 0.4} fill="white" />
+              </Svg>
+
+              <View style={styles.pieOverlayLarge}>
+                <View style={styles.pieCenterContent}>
+                  <Text style={styles.pieCenterTextLarge}>Total</Text>
+                  <Text style={styles.pieCenterSubtext}>
+                    {totalDoses} dose{totalDoses !== 1 ? 's' : ''}
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </View>
+
+          <View style={styles.pieChartBottom}>
+            <View style={styles.pieItem}>
+              <View style={[styles.pieLegendColor, { backgroundColor: item.color }]} />
+              <Text style={styles.pieLegendText}>
+                {item.name}: {item.percentage}% ({item.doses} dose{item.doses !== 1 ? 's' : ''})
+              </Text>
+            </View>
+          </View>
         </View>
-      </View>
-    );
-  }
+      );
+    }
 
-  const size = 180;
-  const radius = 90;
-  const centerX = size / 2;
-  const centerY = size / 2;
+    // Calculate cumulative percentages for pie slices
+    let cumulativePercentage = 0;
 
-  // Handle single slice case
-  if (data.length === 1 && data[0].percentage === 100) {
-    const item = data[0];
-    const totalDoses = item.doses;
-    
+    const paths = data.map((item, index) => {
+      if (item.percentage === 0) return null;
+
+      // Convert percentage to angle (360 degrees)
+      const angle = (item.percentage / 100) * 360;
+
+      // Handle edge case where angle is 360 (full circle)
+      if (angle === 360) {
+        return (
+          <Circle key={`slice-${index}`} cx={centerX} cy={centerY} r={radius} fill={item.color} />
+        );
+      }
+
+      // Calculate start and end points in radians
+      const startAngle = cumulativePercentage;
+      const endAngle = startAngle + angle;
+
+      const startAngleRad = (startAngle - 90) * Math.PI / 180;
+      const endAngleRad = (endAngle - 90) * Math.PI / 180;
+
+      // Calculate points on the circle
+      const x1 = centerX + radius * Math.cos(startAngleRad);
+      const y1 = centerY + radius * Math.sin(startAngleRad);
+      const x2 = centerX + radius * Math.cos(endAngleRad);
+      const y2 = centerY + radius * Math.sin(endAngleRad);
+
+      // Determine if we need to draw a large arc
+      const largeArcFlag = angle > 180 ? 1 : 0;
+
+      // Create the path data
+      const pathData = [
+        `M ${centerX} ${centerY}`,
+        `L ${x1} ${y1}`,
+        `A ${radius} ${radius} 0 ${largeArcFlag} 1 ${x2} ${y2}`,
+        'Z'
+      ].join(' ');
+
+      // Update cumulative percentage for next slice
+      cumulativePercentage += angle;
+
+      return (
+        <Path key={`slice-${index}`} d={pathData} fill={item.color} />
+      );
+    }).filter(Boolean); // Remove null slices
+
+    const totalDoses = data.reduce((sum, d) => sum + d.doses, 0);
+
     return (
       <View style={styles.pieChartContainer}>
         <View style={styles.pieChartTop}>
           <View style={styles.actualPieLarge}>
             <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-              {/* Full circle for single slice */}
-              <Circle cx={centerX} cy={centerY} r={radius} fill={item.color} />
-              {/* Donut hole */}
+              {paths}
+              {/* Draw a circle in the center to create a donut chart effect */}
               <Circle cx={centerX} cy={centerY} r={radius * 0.4} fill="white" />
             </Svg>
 
@@ -1012,148 +1095,92 @@ const calculateTotalMissedDoses = (firstDoseDate: Date | null, allIntakeData: an
         </View>
 
         <View style={styles.pieChartBottom}>
-          <View style={styles.pieItem}>
-            <View style={[styles.pieLegendColor, { backgroundColor: item.color }]} />
-            <Text style={styles.pieLegendText}>
-              {item.name}: {item.percentage}% ({item.doses} dose{item.doses !== 1 ? 's' : ''})
-            </Text>
-          </View>
-        </View>
-      </View>
-    );
-  }
-
-  // Calculate cumulative percentages for pie slices
-  let cumulativePercentage = 0;
-  
-  const paths = data.map((item, index) => {
-    if (item.percentage === 0) return null;
-    
-    // Convert percentage to angle (360 degrees)
-    const angle = (item.percentage / 100) * 360;
-    
-    // Handle edge case where angle is 360 (full circle)
-    if (angle === 360) {
-      return (
-        <Circle key={`slice-${index}`} cx={centerX} cy={centerY} r={radius} fill={item.color} />
-      );
-    }
-    
-    // Calculate start and end points in radians
-    const startAngle = cumulativePercentage;
-    const endAngle = startAngle + angle;
-    
-    const startAngleRad = (startAngle - 90) * Math.PI / 180;
-    const endAngleRad = (endAngle - 90) * Math.PI / 180;
-    
-    // Calculate points on the circle
-    const x1 = centerX + radius * Math.cos(startAngleRad);
-    const y1 = centerY + radius * Math.sin(startAngleRad);
-    const x2 = centerX + radius * Math.cos(endAngleRad);
-    const y2 = centerY + radius * Math.sin(endAngleRad);
-    
-    // Determine if we need to draw a large arc
-    const largeArcFlag = angle > 180 ? 1 : 0;
-    
-    // Create the path data
-    const pathData = [
-      `M ${centerX} ${centerY}`,
-      `L ${x1} ${y1}`,
-      `A ${radius} ${radius} 0 ${largeArcFlag} 1 ${x2} ${y2}`,
-      'Z'
-    ].join(' ');
-    
-    // Update cumulative percentage for next slice
-    cumulativePercentage += angle;
-    
-    return (
-      <Path key={`slice-${index}`} d={pathData} fill={item.color} />
-    );
-  }).filter(Boolean); // Remove null slices
-
-  const totalDoses = data.reduce((sum, d) => sum + d.doses, 0);
-
-  return (
-    <View style={styles.pieChartContainer}>
-      <View style={styles.pieChartTop}>
-        <View style={styles.actualPieLarge}>
-          <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-            {paths}
-            {/* Draw a circle in the center to create a donut chart effect */}
-            <Circle cx={centerX} cy={centerY} r={radius * 0.4} fill="white" />
-          </Svg>
-
-          <View style={styles.pieOverlayLarge}>
-            <View style={styles.pieCenterContent}>
-              <Text style={styles.pieCenterTextLarge}>Total</Text>
-              <Text style={styles.pieCenterSubtext}>
-                {totalDoses} dose{totalDoses !== 1 ? 's' : ''}
+          {data.map((item, index) => (
+            <View key={item.name} style={styles.pieItem}>
+              <View style={[styles.pieLegendColor, { backgroundColor: item.color }]} />
+              <Text style={styles.pieLegendText}>
+                {item.name}: {item.percentage}% ({item.doses} dose{item.doses !== 1 ? 's' : ''})
               </Text>
             </View>
-          </View>
+          ))}
         </View>
       </View>
-
-      <View style={styles.pieChartBottom}>
-        {data.map((item, index) => (
-          <View key={item.name} style={styles.pieItem}>
-            <View style={[styles.pieLegendColor, { backgroundColor: item.color }]} />
-            <Text style={styles.pieLegendText}>
-              {item.name}: {item.percentage}% ({item.doses} dose{item.doses !== 1 ? 's' : ''})
-            </Text>
-          </View>
-        ))}
-      </View>
-    </View>
-  );
-};
+    );
+  };
 
   const renderAdherenceChart = (data: number[], period: PeriodType) => {
-  const labels = getPeriodDataLabels(period);
-  
-  if (data.length === 0) {
+    const labels = getPeriodDataLabels(period);
+
+    if (data.length === 0) {
+      return (
+        <View style={styles.barChartContainer}>
+          <Text style={styles.noDataText}>No adherence data available</Text>
+        </View>
+      );
+    }
+
+    // Calculate bar width based on number of data points
+    const barWidth = Math.max(20, (Dimensions.get('window').width - 40) / Math.max(data.length, 5) - 10);
+
     return (
       <View style={styles.barChartContainer}>
-        <Text style={styles.noDataText}>No adherence data available</Text>
+        {data.map((value, index) => {
+          const label = labels[index] || '';
+
+          return (
+            <View key={`bar-${index}`} style={[styles.barContainer, { width: barWidth }]}>
+              <View style={styles.barWrapper}>
+                <View
+                  style={[
+                    styles.bar,
+                    {
+                      height: Math.max(20, (value / 100) * 200),
+                      width: barWidth - 10
+                    }
+                  ]}
+                />
+              </View>
+              <Text style={styles.barLabel}>{label}</Text>
+              <Text style={styles.barValue}>{value}%</Text>
+            </View>
+          );
+        })}
       </View>
     );
-  }
+  };
 
-  // Calculate bar width based on number of data points
-  const barWidth = Math.max(20, (Dimensions.get('window').width - 40) / Math.max(data.length, 5) - 10);
+  const renderTrendsChart = () => {
+    const dataPoints = analyticsData.dailyData;
+    const labels = getPeriodDataLabels(selectedPeriod);
 
-  return (
-    <View style={styles.barChartContainer}>
-      {data.map((value, index) => {
-        const label = labels[index] || '';
-
-        return (
-          <View key={`bar-${index}`} style={[styles.barContainer, { width: barWidth }]}>
-            <View style={styles.barWrapper}>
-              <View
-                style={[
-                  styles.bar,
-                  { 
-                    height: Math.max(20, (value / 100) * 200),
-                    width: barWidth - 10
-                  }
-                ]}
-              />
+    if (dataPoints.length === 0) {
+      return (
+        <View style={styles.trendsContentWrapper}>
+          <View style={styles.properTrendsContainer}>
+            <View style={styles.trendHeader}>
+              <Text style={styles.trendHeaderLabel}>
+                {selectedPeriod === 'lifetime' && 'Overall Adherence Trend'}
+                {selectedPeriod === 'week' && 'Daily Adherence Trend'}
+                {selectedPeriod === 'month' && 'Weekly Adherence Trend'}
+                {selectedPeriod === 'quarter' && 'Monthly Adherence Trend'}
+                {selectedPeriod === 'year' && 'Quarterly Adherence Trend'}
+              </Text>
             </View>
-            <Text style={styles.barLabel}>{label}</Text>
-            <Text style={styles.barValue}>{value}%</Text>
+            <View style={styles.chartWrapper}>
+              <Text style={styles.noDataText}>No trend data available</Text>
+            </View>
           </View>
-        );
-      })}
-    </View>
-  );
-};
+        </View>
+      );
+    }
 
- const renderTrendsChart = () => {
-  const dataPoints = analyticsData.dailyData;
-  const labels = getPeriodDataLabels(selectedPeriod);
+    // Determine overall trend direction
+    const firstValue = dataPoints[0] || 0;
+    const lastValue = dataPoints[dataPoints.length - 1] || 0;
+    const isTrendUpward = lastValue >= firstValue;
+    const trendColor = isTrendUpward ? '#10B981' : '#EF4444';
+    const averageValue = Math.round(dataPoints.reduce((a, b) => a + b, 0) / dataPoints.length);
 
-  if (dataPoints.length === 0) {
     return (
       <View style={styles.trendsContentWrapper}>
         <View style={styles.properTrendsContainer}>
@@ -1165,181 +1192,154 @@ const calculateTotalMissedDoses = (firstDoseDate: Date | null, allIntakeData: an
               {selectedPeriod === 'quarter' && 'Monthly Adherence Trend'}
               {selectedPeriod === 'year' && 'Quarterly Adherence Trend'}
             </Text>
-          </View>
-          <View style={styles.chartWrapper}>
-            <Text style={styles.noDataText}>No trend data available</Text>
-          </View>
-        </View>
-      </View>
-    );
-  }
-
-  // Determine overall trend direction
-  const firstValue = dataPoints[0] || 0;
-  const lastValue = dataPoints[dataPoints.length - 1] || 0;
-  const isTrendUpward = lastValue >= firstValue;
-  const trendColor = isTrendUpward ? '#10B981' : '#EF4444';
-  const averageValue = Math.round(dataPoints.reduce((a, b) => a + b, 0) / dataPoints.length);
-
-  return (
-    <View style={styles.trendsContentWrapper}>
-      <View style={styles.properTrendsContainer}>
-        <View style={styles.trendHeader}>
-          <Text style={styles.trendHeaderLabel}>
-            {selectedPeriod === 'lifetime' && 'Overall Adherence Trend'}
-            {selectedPeriod === 'week' && 'Daily Adherence Trend'}
-            {selectedPeriod === 'month' && 'Weekly Adherence Trend'}
-            {selectedPeriod === 'quarter' && 'Monthly Adherence Trend'}
-            {selectedPeriod === 'year' && 'Quarterly Adherence Trend'}
-          </Text>
-          <View style={styles.trendIndicator}>
-            <View style={[styles.trendDot, { backgroundColor: trendColor }]} />
-            <Text style={[
-              styles.trendIndicatorText,
-              { color: trendColor }
-            ]}>
-              {isTrendUpward ? '↑ Improving' : '↓ Needs attention'}
-            </Text>
-          </View>
-        </View>
-
-        {/* Simple Line Chart */}
-        <View style={styles.simpleChartContainer}>
-          {/* Y-axis labels */}
-          <View style={styles.yAxisContainer}>
-            {[100, 75, 50, 25, 0].map((value) => (
-              <Text key={value} style={styles.yAxisLabel}>{value}%</Text>
-            ))}
-          </View>
-
-          {/* Chart area */}
-          <View style={styles.chartArea}>
-            {/* Grid lines */}
-            {[0, 1, 2, 3, 4].map(level => (
-              <View 
-                key={level} 
-                style={[
-                  styles.gridLine, 
-                  { 
-                    top: `${level * 25}%`,
-                  }
-                ]} 
-              />
-            ))}
-
-            {/* Line chart using SVG */}
-            <View style={styles.lineChartContainer}>
-              <Svg height="100%" width="100%" viewBox={`0 0 ${dataPoints.length * 100} 100`} preserveAspectRatio="none">
-                {/* Create the line path */}
-                <Path
-                  d={dataPoints.map((value, index) => {
-                    const x = index * 100;
-                    const y = 100 - value; // Invert since SVG y=0 is top
-                    return `${index === 0 ? 'M' : 'L'} ${x} ${y}`;
-                  }).join(' ')}
-                  stroke={trendColor}
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  fill="none"
-                />
-                
-                {/* Data points */}
-                {dataPoints.map((value, index) => {
-                  const x = index * 100;
-                  const y = 100 - value;
-                  return (
-                    <Circle
-                      key={`point-${index}`}
-                      cx={x}
-                      cy={y}
-                      r="3"
-                      fill={trendColor}
-                      stroke="#fff"
-                      strokeWidth="2"
-                    />
-                  );
-                })}
-              </Svg>
-            </View>
-          </View>
-        </View>
-
-        {/* X-axis labels */}
-        <View style={styles.xAxisContainer}>
-          {labels.map((label, index) => (
-            <Text key={`label-${index}`} style={styles.xAxisLabel}>
-              {label}
-            </Text>
-          ))}
-        </View>
-
-        {/* Current value indicator */}
-        {dataPoints.length > 0 && (
-          <View style={styles.currentValueContainer}>
-            <View style={[styles.currentValueBubble, { backgroundColor: trendColor }]}>
-              <Text style={styles.currentValueText}>
-                Current: {lastValue}%
+            <View style={styles.trendIndicator}>
+              <View style={[styles.trendDot, { backgroundColor: trendColor }]} />
+              <Text style={[
+                styles.trendIndicatorText,
+                { color: trendColor }
+              ]}>
+                {isTrendUpward ? '↑ Improving' : '↓ Needs attention'}
               </Text>
             </View>
           </View>
-        )}
 
-        {/* Trend summary stats */}
-        <View style={styles.trendStatsContainer}>
-          <View style={styles.statItem}>
-            <Text style={styles.statLabel}>Current</Text>
-            <Text style={[styles.statValue, { color: trendColor }]}>
-              {lastValue}%
-            </Text>
+          {/* Simple Line Chart */}
+          <View style={styles.simpleChartContainer}>
+            {/* Y-axis labels */}
+            <View style={styles.yAxisContainer}>
+              {[100, 75, 50, 25, 0].map((value) => (
+                <Text key={value} style={styles.yAxisLabel}>{value}%</Text>
+              ))}
+            </View>
+
+            {/* Chart area */}
+            <View style={styles.chartArea}>
+              {/* Grid lines */}
+              {[0, 1, 2, 3, 4].map(level => (
+                <View
+                  key={level}
+                  style={[
+                    styles.gridLine,
+                    {
+                      top: `${level * 25}%`,
+                    }
+                  ]}
+                />
+              ))}
+
+              {/* Line chart using SVG */}
+              <View style={styles.lineChartContainer}>
+                <Svg height="100%" width="100%" viewBox={`0 0 ${dataPoints.length * 100} 100`} preserveAspectRatio="none">
+                  {/* Create the line path */}
+                  <Path
+                    d={dataPoints.map((value, index) => {
+                      const x = index * 100;
+                      const y = 100 - value; // Invert since SVG y=0 is top
+                      return `${index === 0 ? 'M' : 'L'} ${x} ${y}`;
+                    }).join(' ')}
+                    stroke={trendColor}
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    fill="none"
+                  />
+
+                  {/* Data points */}
+                  {dataPoints.map((value, index) => {
+                    const x = index * 100;
+                    const y = 100 - value;
+                    return (
+                      <Circle
+                        key={`point-${index}`}
+                        cx={x}
+                        cy={y}
+                        r="3"
+                        fill={trendColor}
+                        stroke="#fff"
+                        strokeWidth="2"
+                      />
+                    );
+                  })}
+                </Svg>
+              </View>
+            </View>
           </View>
-          <View style={styles.statItem}>
-            <Text style={styles.statLabel}>Average</Text>
-            <Text style={styles.statValue}>
-              {averageValue}%
-            </Text>
+
+          {/* X-axis labels */}
+          <View style={styles.xAxisContainer}>
+            {labels.map((label, index) => (
+              <Text key={`label-${index}`} style={styles.xAxisLabel}>
+                {label}
+              </Text>
+            ))}
           </View>
-          <View style={styles.statItem}>
-            <Text style={styles.statLabel}>Change</Text>
-            <Text style={[styles.statValue, { color: trendColor }]}>
-              {isTrendUpward ? '+' : ''}{Math.round(lastValue - firstValue)}%
-            </Text>
+
+          {/* Current value indicator */}
+          {dataPoints.length > 0 && (
+            <View style={styles.currentValueContainer}>
+              <View style={[styles.currentValueBubble, { backgroundColor: trendColor }]}>
+                <Text style={styles.currentValueText}>
+                  Current: {lastValue}%
+                </Text>
+              </View>
+            </View>
+          )}
+
+          {/* Trend summary stats */}
+          <View style={styles.trendStatsContainer}>
+            <View style={styles.statItem}>
+              <Text style={styles.statLabel}>Current</Text>
+              <Text style={[styles.statValue, { color: trendColor }]}>
+                {lastValue}%
+              </Text>
+            </View>
+            <View style={styles.statItem}>
+              <Text style={styles.statLabel}>Average</Text>
+              <Text style={styles.statValue}>
+                {averageValue}%
+              </Text>
+            </View>
+            <View style={styles.statItem}>
+              <Text style={styles.statLabel}>Change</Text>
+              <Text style={[styles.statValue, { color: trendColor }]}>
+                {isTrendUpward ? '+' : ''}{Math.round(lastValue - firstValue)}%
+              </Text>
+            </View>
           </View>
         </View>
       </View>
-    </View>
-  );
-};
+    );
+  };
 
   const renderTabContent = () => {
-  if (loading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#0ea5e9" />
-        <Text style={styles.loadingText}>Loading analytics data...</Text>
-      </View>
-    );
-  }
-
-  switch (selectedTab) {
-    case 'adherence':
-      // Determine if we should show daily or weekly for lifetime
-      const isLifetimeDaily = selectedPeriod === 'lifetime' && firstDoseDate && 
-        Math.ceil((new Date().getTime() - firstDoseDate.getTime()) / (1000 * 60 * 60 * 24)) + 1 <= 7;
-      
+    if (loading) {
       return (
-        <View style={styles.adherenceContainer}>
-          <View style={[styles.heading3, styles.analyticsscreenLayout]}>
-            <Text style={[styles.dailyAdherenceRate, styles.adherenceTypo]}>
-              {selectedPeriod === 'week' ? 'Daily' :
-               selectedPeriod === 'month' ? 'Weekly' :
-               selectedPeriod === 'quarter' ? 'Monthly' :
-               selectedPeriod === 'year' ? 'Quarterly' :
-               isLifetimeDaily ? 'Daily' : 'Recent Weekly'} Adherence Rate
-            </Text>
-          </View>
-          <View style={styles.chartWrapper}>
-            {renderAdherenceChart(analyticsData.dailyData, selectedPeriod)}
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#0ea5e9" />
+          <Text style={styles.loadingText}>Loading analytics data...</Text>
+        </View>
+      );
+    }
+
+    switch (selectedTab) {
+      case 'adherence':
+        // Determine if we should show daily or weekly for lifetime
+        const isLifetimeDaily = selectedPeriod === 'lifetime' && firstDoseDate &&
+          Math.ceil((new Date().getTime() - firstDoseDate.getTime()) / (1000 * 60 * 60 * 24)) + 1 <= 7;
+
+        return (
+          <View style={styles.adherenceContainer}>
+            <View style={[styles.heading3, styles.analyticsscreenLayout]}>
+              <Text style={[styles.dailyAdherenceRate, styles.adherenceTypo]}>
+                {selectedPeriod === 'week' ? 'Daily' :
+                  selectedPeriod === 'month' ? 'Weekly' :
+                    selectedPeriod === 'quarter' ? 'Monthly' :
+                      selectedPeriod === 'year' ? 'Quarterly' :
+                        isLifetimeDaily ? 'Daily' : 'Recent Weekly'} Adherence Rate
+              </Text>
+            </View>
+            <View style={styles.chartWrapper}>
+              {renderAdherenceChart(analyticsData.dailyData, selectedPeriod)}
             </View>
 
             <View style={styles.medicationBreakdownContainer}>
@@ -1437,22 +1437,22 @@ const calculateTotalMissedDoses = (firstDoseDate: Date | null, allIntakeData: an
   const renderPeriodButtons = () => {
     const buttonWidth = 67; // Fixed width for each button
     const totalWidth = availablePeriods.length * (buttonWidth + 10) - 10; // 10 is margin between buttons
-    
+
     return (
-      <ScrollView 
-        horizontal 
+      <ScrollView
+        horizontal
         showsHorizontalScrollIndicator={false}
         style={[styles.container2, { maxHeight: 40 }]}
         contentContainerStyle={{ width: totalWidth }}
       >
         {availablePeriods.map((period) => (
-          <Pressable 
+          <Pressable
             key={period}
             style={[
-              styles.periodButton, 
+              styles.periodButton,
               selectedPeriod === period ? styles.periodButtonActive : [styles.periodButtonInactive, styles.buttonBorder],
               { width: buttonWidth }
-            ]} 
+            ]}
             onPress={() => handlePeriodChange(period)}
           >
             <Text style={selectedPeriod === period ? styles.periodButtonTextActive : styles.periodButtonTextInactive}>
@@ -1465,7 +1465,7 @@ const calculateTotalMissedDoses = (firstDoseDate: Date | null, allIntakeData: an
   };
 
   return (
-    <SafeAreaView style={styles.app}>
+    <SafeAreaView style={styles.app} edges={['top', 'left', 'right']}>
       <View style={styles.view}>
         <ScrollView style={styles.scrollview} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 80 }}>
           <View style={styles.analyticsscreen}>
@@ -1475,7 +1475,7 @@ const calculateTotalMissedDoses = (firstDoseDate: Date | null, allIntakeData: an
               </View>
               <View style={[styles.paragraph, styles.analyticsscreenLayout]}>
                 <Text style={[styles.trackYourMedication, styles.adherenceTypo]}>
-                  {firstDoseDate 
+                  {firstDoseDate
                     ? `Tracking since ${firstDoseDate.toLocaleDateString()}`
                     : 'Track your medication adherence and history'
                   }
@@ -1545,7 +1545,7 @@ const calculateTotalMissedDoses = (firstDoseDate: Date | null, allIntakeData: an
                 <Pressable style={[selectedTab === 'adherence' ? styles.primitivebutton : styles.primitivebuttonFlexBox, styles.primitivebuttonFlexBox]} onPress={() => handleTabChange('adherence')}>
                   <Text style={[styles.adherence2, styles.adherenceTypo]}>Adherence</Text>
                 </Pressable>
-              <Pressable style={[selectedTab === 'intake' ? styles.primitivebutton : styles.primitivebuttonFlexBox, styles.primitivebuttonFlexBox]} onPress={() => handleTabChange('intake')}>
+                <Pressable style={[selectedTab === 'intake' ? styles.primitivebutton : styles.primitivebuttonFlexBox, styles.primitivebuttonFlexBox]} onPress={() => handleTabChange('intake')}>
                   <Text style={[styles.adherence2, styles.adherenceTypo]}>Intake</Text>
                 </Pressable>
                 <Pressable style={[selectedTab === 'trends' ? styles.primitivebutton : styles.primitivebuttonFlexBox, styles.primitivebuttonFlexBox]} onPress={() => handleTabChange('trends')}>
@@ -2360,7 +2360,7 @@ const styles = StyleSheet.create({
   },
   trendChartArea: {
     position: "relative",
-    marginLeft: 40, 
+    marginLeft: 40,
     overflow: "visible",
   },
   trendChartAreaFixed: {

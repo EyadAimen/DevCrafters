@@ -119,7 +119,7 @@ const Profile: React.FC = () => {
 
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <ScrollView contentContainerStyle={{ paddingBottom: 120 }}>
         {/* Header */}
         <View style={styles.header}>
